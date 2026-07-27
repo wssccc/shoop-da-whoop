@@ -1,0 +1,10 @@
+# Single source of truth for which browsers we support.
+# Read by: @vitejs/plugin-legacy, postcss-preset-env, autoprefixer.
+#
+# iOS 13 / Safari 13 is the floor. Bump these numbers when you drop support;
+# everything downstream (transpile target, polyfill set, CSS fallbacks) follows.
+iOS >= 13
+Safari >= 13
+Chrome >= 60
+Firefox >= 70
+Edge >= 79

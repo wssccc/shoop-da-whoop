@@ -1,0 +1,19 @@
+{
+  "name": "solitaire",
+  "type": "module",
+  "description": "Solitaire — an HTML5 implementation of the FreeCell-style patience game.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview",
+    "legacy-check": "vite build && ls -la dist/assets"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^8.2.2",
+    "postcss": "^8.5.23",
+    "postcss-preset-env": "^11.3.2",
+    "terser": "^5.49.0",
+    "vite": "^8.1.5"
+  }
+}

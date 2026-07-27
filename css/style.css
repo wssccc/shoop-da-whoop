@@ -1,0 +1,550 @@
+/* Solitaire — retro dark "jade felt" theme. */
+
+:root {
+  --bg: #06140c;
+  --felt: #0d2b1a;
+  --felt-2: #0a2013;
+  --panel: #0e2a1b;
+  --line: #1c5236;
+  --line-hi: #2f8a5b;
+  --gold: #d8b15a;
+  --ink: #e9efe6;
+  --ink-dim: #9fb6a6;
+  --card-w: 72px;
+  --card-h: 102px;
+  --gap: 10px;
+  --radius: 8px;
+  --red: #c0392b;
+  --black: #161616;
+  --green: #1e8449;
+  --dragon: #12b3a4;
+  --flower: #d63384;
+}
+
+* {
+  box-sizing: border-box;
+  /* The whole board is a drag surface: forbid selection, long-press callouts,
+     tap highlights and native element dragging everywhere so they never hijack a
+     card drag. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+/* iOS Safari (especially 13–14, our legacy floor) sometimes ignores the `*`
+   cascade for callouts/selection when it originates from the root element, so
+   re-state the long-press defenses on <html> explicitly. */
+html {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background:
+    radial-gradient(140% 120% at 50% -10%, var(--felt) 0%, var(--felt-2) 55%, var(--bg) 100%);
+  color: var(--ink);
+  font-family: "DejaVu Sans Mono", "SFMono-Regular", "Consolas", "Menlo", monospace;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  /* `pan-x pan-y` lets the page scroll/zoom normally but blocks the long-press
+     gesture that triggers the iOS selection callout menu. */
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+}
+
+/* ---------- Top bar ---------- */
+.toolbar-panel, .toolbar-panel.side-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* gap removed: legacy Safari (< 14.1) ignores flex `gap`; `space-between`
+     already separates the brand and controls row, so no fallback needed here. */
+  padding: 12px 18px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0));
+  border-bottom: 1px solid var(--line);
+  width: 100%;
+  order: 0;
+}
+.brand { display: flex; align-items: center; }
+.brand > * + * { margin-left: 10px; }  /* flex `gap` fallback (legacy Safari) */
+.brand-glyph {
+  font-size: 22px;
+  color: var(--dragon);
+  text-shadow: 0 0 12px rgba(18,179,164,0.6);
+}
+.brand h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.controls { display: flex; align-items: center; }
+.controls > * + * { margin-left: 8px; }  /* flex `gap` fallback (legacy Safari) */
+.controls button, .wins-pill {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: rgba(12,40,26,0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .05s;
+}
+.controls button:hover { border-color: var(--line-hi); background: rgba(20,60,38,0.9); }
+.controls button:active { transform: translateY(1px); }
+.controls button:disabled { opacity: .4; cursor: not-allowed; }
+.wins-pill {
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wins-pill span { margin-left: 4px; }
+#btn-mute { min-width: 42px; }
+/* Mobile-only fullscreen/landscape toggle; hidden on desktop. */
+#btn-fullscreen { display: none; }
+
+/* ---------- Board layout ---------- */
+.board {
+  max-width: 760px;
+  margin: 18px auto 40px;
+  padding: 0 14px;
+  touch-action: none; /* prevent scroll while dragging */
+}
+/* ---------- Responsive layout wrapper ---------- */
+.game-layout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  /* `row-gap` removed: legacy Safari ignores it, which let wrapped rows
+     (e.g. the tableau beneath the free-cell / dragon panel) touch. Emulated
+     below with a negative top margin cancelling the first row's child margin. */
+  margin-top: -22px;
+  margin-bottom: 22px;
+}
+/* Legacy-safe row-gap polyfill: every direct region sits 22px below the one
+   above it. Works whether or not the browser supports `display: contents`,
+   since margins are honoured by all flex engines. */
+.game-layout > * { margin-top: 22px; }
+.side-panel { display: contents; }
+.panel-content { display: flex; }
+.panel-content > * + * { margin-left: var(--gap); }  /* flex `gap` fallback */
+.cell-group { display: flex; }
+.cell-group > * + * { margin-left: var(--gap); }  /* flex `gap` fallback */
+.side-label { display: none; }
+
+/* ---------- Slots ---------- */
+.slot {
+  width: var(--card-w);
+  height: var(--card-h);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(0,0,0,0.18);
+  position: relative;
+}
+.slot.empty { background: rgba(0,0,0,0.22); }
+.slot.foundation { border-style: solid; }
+.slot.foundation .count {
+  position: absolute;
+  right: 4px; bottom: 2px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.55);
+}
+.foundation.c-red   { box-shadow: inset 0 0 0 2px rgba(192,57,43,0.35); }
+.foundation.c-black { box-shadow: inset 0 0 0 2px rgba(220,220,220,0.18); }
+.foundation.c-green { box-shadow: inset 0 0 0 2px rgba(30,132,73,0.45); }
+
+.slot.flower-slot { border-color: rgba(214,51,132,0.6); }
+.slot.flower-slot.empty::before {
+  content: "✿";
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  color: rgba(214,51,132,0.35);
+  font-size: 26px;
+}
+
+.slot.col {
+  width: var(--card-w);
+  min-height: var(--card-h);
+  height: auto;
+  border: none;
+  background: transparent;
+}
+/* First-card placeholder: a dashed frame at the bottom of each column, matching
+   the free-cell / foundation look. Empty columns show it clearly; once a card
+   is placed it paints over the frame (pseudo-element renders first in document
+   order). Anchored to --card-w/----card-h so it scales on mobile. */
+.slot.col.empty::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--card-w);
+  height: var(--card-h);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+.slot.col.empty { background: transparent; }
+
+/* Locked dragon cell */
+.slot.locked {
+  border-style: solid;
+}
+.slot.locked.c-red {
+  border-color: var(--red);
+  box-shadow: inset 0 0 12px rgba(192,57,43,0.35);
+}
+.slot.locked.c-black {
+  border-color: #555;
+  box-shadow: inset 0 0 12px rgba(180,180,180,0.25);
+}
+.slot.locked.c-green {
+  border-color: var(--green);
+  box-shadow: inset 0 0 12px rgba(30,132,73,0.45);
+}
+.locked-dragons {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 30px;
+}
+.locked-dragons.c-red  { color: var(--red); }
+.locked-dragons.c-black { color: #ccc; }
+.locked-dragons.c-green { color: var(--green); }
+.locked-dragons .lock {
+  position: absolute;
+  right: 3px; bottom: 2px;
+  font-size: 11px;
+  opacity: .7;
+}
+
+/* ---------- Tableau ---------- */
+.tableau {
+  display: grid;
+  grid-template-columns: repeat(8, var(--card-w));
+  gap: var(--gap);
+  justify-content: center;
+  width: 100%;
+  order: 10;
+}
+.col .card:not(:first-child) { margin-top: -74px; }
+.col .card { pointer-events: auto; }
+
+/* ---------- Cards ---------- */
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.08);
+  background: #efe9d8;
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+  transition: transform .05s;
+  font-family: "DejaVu Sans Mono", "SFMono-Regular", "Consolas", "Menlo", "Microsoft JhengHei", "PingFang TC", "Noto Sans CJK TC", monospace;
+}
+/* Corner pips so stacked cards remain readable */
+.corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.corner.tl { top: 3px; left: 4px; }
+.corner.br { bottom: 3px; right: 4px; transform: rotate(180deg); }
+
+.rank-num {
+  font-size: 16px;
+  font-weight: 700;
+}
+.glyph-small {
+  font-size: 14px;
+}
+
+.c-red   .corner { color: var(--red); }
+.c-green .corner { color: var(--green); }
+.c-black .corner { color: #1c1c1c; }
+
+.card.dragon {
+  background: #efe9d8;
+}
+.card.dragon .corner { color: var(--dragon); }
+.card.dragon.c-red .corner { color: var(--red); }
+.card.dragon.c-black .corner { color: #1c1c1c; }
+.card.dragon.c-green .corner { color: var(--green); }
+
+.card.flower {
+  background: #efe9d8;
+}
+.card.flower .corner { color: var(--flower); }
+
+.card.no-drag { cursor: default; }
+
+.flying-card {
+  position: fixed;
+  margin: 0;
+  z-index: 100;
+  pointer-events: none;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Drag states */
+.card.is-dragging { visibility: hidden; }
+.card.ghost {
+  position: fixed;
+  margin: 0;
+  cursor: grabbing;
+  transform-origin: center top;
+  filter: drop-shadow(0 8px 10px rgba(0,0,0,0.55));
+  pointer-events: none;
+  transition: none;
+}
+.shake { animation: shake .32s; }
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+/* Drop highlight */
+.slot.drop-ok {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(216,177,90,0.6);
+}
+
+/* ---------- Dragon collect button ---------- */
+.dragon-btn {
+  width: var(--card-w);
+  height: var(--card-h);
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: rgba(8,30,24,0.7);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  cursor: not-allowed;
+  transition: all .15s;
+}
+.dragon-btn .glyph { font-size: 26px; opacity: .5; }
+.dragon-btn.ready {
+  color: #06140c;
+  border-style: solid;
+  cursor: pointer;
+  animation: pulse 1.4s infinite;
+}
+.dragon-btn.ready[data-color="red"] {
+  background: linear-gradient(160deg, #e74c3c, #a8231a);
+  border-color: #e74c3c;
+  box-shadow: 0 0 18px rgba(231,76,60,0.55);
+}
+.dragon-btn.ready[data-color="black"] {
+  background: linear-gradient(160deg, #7f8c8d, #4a4a4a);
+  border-color: #95a5a6;
+  box-shadow: 0 0 18px rgba(149,165,166,0.55);
+}
+.dragon-btn.ready[data-color="green"] {
+  background: linear-gradient(160deg, #27ae60, #186a36);
+  border-color: #27ae60;
+  box-shadow: 0 0 18px rgba(39,174,96,0.55);
+}
+.dragon-btn.ready .glyph { opacity: 1; color: #06140c; }
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 10px rgba(18,200,184,0.45); }
+  50% { box-shadow: 0 0 22px rgba(18,200,184,0.85); }
+}
+
+/* ---------- Achievements ---------- */
+.achievements {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+.achv {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 12px 5px 8px;
+  opacity: .55;
+  transition: all .2s;
+}
+.achv .ribbon { font-size: 15px; }
+.achv i { font-style: normal; color: var(--ink-dim); }
+.achv.done {
+  opacity: 1;
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+/* ---------- Win overlay ---------- */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(2,10,6,0.78);
+  display: grid; place-items: center;
+  z-index: 50;
+}
+.overlay[hidden] { display: none; }
+.overlay-card {
+  background: linear-gradient(160deg, #103023, #0a1c13);
+  border: 1px solid var(--line-hi);
+  border-radius: 14px;
+  padding: 34px 44px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(0,0,0,0.6);
+}
+.overlay-glyph { font-size: 54px; color: var(--gold); text-shadow: 0 0 24px rgba(216,177,90,0.6); }
+.overlay-card h2 { margin: 8px 0 4px; color: var(--gold); letter-spacing: 2px; }
+.overlay-card p { margin: 0 0 18px; color: var(--ink-dim); }
+.overlay-card button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--line-hi);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.overlay-card button:hover { filter: brightness(1.1); }
+
+/* ---------- Toasts ---------- */
+.toasts {
+  position: fixed;
+  left: 50%; bottom: 24px;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column;
+  gap: 8px; align-items: center;
+  z-index: 60;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(8,30,24,0.96);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  animation: toast-in .25s ease, toast-out .3s ease 1.8s forwards;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
+
+/* ---------- Responsive ---------- */
+@media (orientation: landscape) and (max-width: 896px),
+       (max-width: 560px) {
+  :root { --card-w: 52px; --card-h: 74px; --gap: 6px; }
+  html, body { overflow: hidden; }
+
+  .game-layout {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    row-gap: 0; /* override desktop row-gap; column spacing now via margins */
+    margin-bottom: 14px;
+    position: relative;
+  }
+  /* Legacy Safari (< 14.1) ignores flex `gap`; emulate it with sibling margins
+     so the toolbar / free-cell panel / tableau / foundation panel stay spaced. */
+  .game-layout > * + * { margin-left: 8px; }
+
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 56px;
+    flex-shrink: 0;
+    padding: 4px 0;
+    align-items: center;
+  }
+
+  .toolbar-panel.side-panel { order: 0; width: 44px; flex-direction: column; padding: 6px 4px; border-bottom: none; border-right: 1px solid var(--line); background: rgba(0,0,0,0.25); }
+  .toolbar-panel.side-panel > * + * { margin-top: 8px; }
+  .toolbar-panel.side-panel .brand h1 { display: none; }
+  .toolbar-panel.side-panel .controls { flex-direction: column; }
+  .toolbar-panel.side-panel .controls > * + * { margin-top: 6px; }
+  .toolbar-panel.side-panel .controls button, .toolbar-panel.side-panel .wins-pill {
+    font-size: 11px;
+    padding: 5px 4px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    min-width: 0;
+    width: 100%;
+  }
+  .toolbar-panel.side-panel .wins-pill { writing-mode: vertical-rl; text-orientation: mixed; }
+
+  .left-panel  { order: 1; }
+  .tableau     { order: 2; flex: 1; width: auto;
+                  display: grid; grid-template-columns: repeat(8, var(--card-w)); gap: 6px;
+                  justify-content: center; }
+  .right-panel { order: 3; }
+
+  .panel-content {
+    flex-direction: column;
+    align-items: center;
+  }
+  .panel-content > * + * { margin-top: 6px; }
+
+  .panel-content .cell-group {
+    flex-direction: column;
+    align-items: center;
+  }
+  .panel-content .cell-group > * + * { margin-top: 6px; }
+
+  .dragon-btn .lbl { display: none; }
+
+  .side-label {
+    position: absolute;
+    top: -16px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: block;
+  }
+  .lbl-left  { left: 44px; }
+  .lbl-right { right: 0; }
+
+  .card.num .rank, .card.dragon .glyph, .card.flower .glyph { font-size: 20px; }
+  .col .card:not(:first-child) { margin-top: -54px; }
+  .brand h1 { font-size: 13px; }
+
+  /* Show fullscreen/landscape toggle only on mobile layouts. */
+  #btn-fullscreen {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 6px;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+  }
+  #btn-fullscreen.fs-active {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+}
