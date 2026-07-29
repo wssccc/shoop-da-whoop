@@ -1,6 +1,7 @@
-// Vite configuration for the Solitaire project.
+// Vite configuration for the Shoop Da Whoop site (MPA).
 //
 // Goals:
+//   * Multi-page entry: home (index.html) + each game under games/<name>/index.html.
 //   * Zero-config dev server with HMR (replaces the python http.server workflow).
 //   * Production build that ships a modern ES module bundle PLUS a transpiled
 //     legacy bundle (nomodule) so iOS 13 / Safari 13 (and other older engines)
@@ -11,8 +12,12 @@
 // Targets are declared once in `.browserslistrc` and read by both
 // @vitejs/plugin-legacy and postcss-preset-env / autoprefixer.
 
-import { defineConfig } from 'vite';
 import legacy from '@vitejs/plugin-legacy';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   // Relative asset URLs so dist/ can be hosted from any sub-path
@@ -42,6 +47,15 @@ export default defineConfig({
     minify: 'terser',
     terserOptions: {
       format: { comments: false },
+    },
+    // Multi-page entries: home + one per game folder under games/.
+    rollupOptions: {
+      input: {
+        home: resolve(__dirname, 'index.html'),
+        solitaire: resolve(__dirname, 'games/solitaire/index.html'),
+        '1a2b': resolve(__dirname, 'games/1a2b/index.html'),
+        othello: resolve(__dirname, 'games/othello/index.html'),
+      },
     },
   },
 

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#08160e" />
+  <title>纸牌接龙 · Solitaire</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <main id="board" class="board">
+    <div class="game-layout">
+      <header class="side-panel toolbar-panel">
+        <div class="brand">
+          <span class="brand-glyph">龍</span>
+          <h1>纸牌接龙</h1>
+        </div>
+        <nav class="controls">
+          <button id="btn-new"   type="button" title="新局 (N)">⟳ 新局</button>
+          <button id="btn-undo"  type="button" title="撤销 (U / Z)">↶ 撤销</button>
+          <button id="btn-mute"  type="button" title="静音 (M)">🔊</button>
+          <button id="btn-fullscreen" type="button" title="横屏全屏 (F)">⛶</button>
+          <div class="wins-pill">胜局 <span id="wins-count">0</span></div>
+        </nav>
+      </header>
+      <aside class="side-panel left-panel">
+        <div class="panel-content">
+          <div class="cell-group">
+            <div class="slot free-cell" id="fc-0" data-slot="fc-0"></div>
+            <div class="slot free-cell" id="fc-1" data-slot="fc-1"></div>
+            <div class="slot free-cell" id="fc-2" data-slot="fc-2"></div>
+          </div>
+          <button id="dragon-btn" class="dragon-btn" type="button" title="收 (C)">
+            <span class="glyph">🐉</span><span class="lbl">收</span>
+          </button>
+        </div>
+      </aside>
+
+      <aside class="side-panel right-panel">
+        <div class="panel-content">
+          <div class="cell-group foundations">
+            <div class="slot foundation c-red"   id="found-red"   data-slot="found-red"></div>
+            <div class="slot foundation c-black" id="found-black" data-slot="found-black"></div>
+            <div class="slot foundation c-green" id="found-green" data-slot="found-green"></div>
+          </div>
+        </div>
+        <div class="slot flower-slot" id="flower-slot" data-slot="flower"></div>
+      </aside>
+
+      <section class="tableau">
+      <div class="slot col" id="col-0" data-slot="col-0"></div>
+      <div class="slot col" id="col-1" data-slot="col-1"></div>
+      <div class="slot col" id="col-2" data-slot="col-2"></div>
+      <div class="slot col" id="col-3" data-slot="col-3"></div>
+      <div class="slot col" id="col-4" data-slot="col-4"></div>
+      <div class="slot col" id="col-5" data-slot="col-5"></div>
+      <div class="slot col" id="col-6" data-slot="col-6"></div>
+      <div class="slot col" id="col-7" data-slot="col-7"></div>
+      </section>
+
+      <span class="side-label lbl-left">空闲 + 龙牌</span>
+      <span class="side-label lbl-right">终局 + 花牌</span>
+    </div>
+
+
+  </main>
+
+  <!-- Win overlay -->
+  <div class="overlay" id="win-overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-glyph">☯</div>
+      <h2>恭喜通关</h2>
+      <p>累计胜局 <strong id="win-wins">0</strong> 局</p>
+      <button id="play-again" type="button">再来一局 (N)</button>
+    </div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <!-- Entry module. Vite resolves this during dev/build and @vitejs/plugin-legacy
+       automatically injects a <script nomodule> fallback for iOS 13 / Safari 13. -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

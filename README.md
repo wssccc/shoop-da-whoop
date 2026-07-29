@@ -1,72 +1,60 @@
-# 纸牌接龙 · Solitaire
+# Shoop Da Whoop
 
-基于经典 FreeCell（空当接龙）机制的 HTML5 单人纸牌游戏，融合东方元素（龙、花、阴阳三色）。
+> Shoop Da Whoop — Raw Meme Collage. 复古梗图拼贴站点，附带若干小游戏。
 
-## 快速开始
+**线上地址**：<https://shoopdawhoop.wssccc.com>
+
+## 项目简介
+
+Shoop Da Whoop 是一个 IE6 复古拼贴风主题站点：
+
+- **首页**（`index.html`）：Raw Meme Collage 原始梗拼贴页，附带各游戏入口链接。
+- **附属游戏**（`games/`）：
+  - `solitaire/` — 纸牌接龙（FreeCell 风格，已实现）
+  - `1a2b/` — 猜数字（占位页）
+  - `othello/` — 黑白棋（占位页）
+
+技术栈：Vite + 原生 JavaScript（无框架），`@vitejs/plugin-legacy` 双包兼容 iOS/Safari 13。
+
+## 开发
 
 ```bash
 npm install      # 安装依赖（首次）
-npm run dev      # 启动 Vite 开发服务器（HMR）
-# 浏览器打开 http://localhost:8000
+npm run dev      # 启动开发服务器（HMR）
 ```
 
-构建与预览生产版本：
+开发环境访问（端口 8000）：
+
+| 页面 | 地址 |
+|------|------|
+| 首页 | <http://localhost:8000/> |
+| 纸牌接龙 | <http://localhost:8000/games/solitaire/> |
+| 1A2B | <http://localhost:8000/games/1a2b/> |
+| Othello | <http://localhost:8000/games/othello/> |
+
+## 构建与部署
 
 ```bash
-npm run build      # 产出 dist/（modern ESM + legacy nomodule 双包）
-npm run preview    # 本地预览构建产物（端口 8000）
+npm run build    # 产出 dist/（modern ESM + legacy nomodule 双包）
+npm run preview  # 本地预览构建产物
 ```
 
-### npm 脚本
+构建产物在 `dist/`，使用相对资源路径（`base: './'`），可托管于任意静态服务器或子路径。
 
-| 脚本 | 说明 |
-| --- | --- |
-| `npm run dev` | Vite 开发服务器，热模块替换（HMR） |
-| `npm run build` | 生产打包：Terser 压缩 + `@vitejs/plugin-legacy` 双包 |
-| `npm run preview` / `npm run serve` | 本地预览 `dist/` 构建产物 |
-| `npm run legacy-check` | 构建并检查 `dist/assets` 中的新旧双产物 |
+站点部署至 **<https://shoopdawhoop.wssccc.com>**：将 `dist/` 内容上传至服务器对应目录即可。
 
-## 项目结构
+## 目录结构
 
 ```text
-solitaire/
-├── index.html          # 单页入口
-├── vite.config.js      # Vite 配置（dev/preview 端口、legacy 插件）
-├── postcss.config.js   # PostCSS：preset-env(stage 3) + autoprefixer
-├── .browserslistrc     # 兼容性底限（iOS/Safari 13、Chrome 60、FF 70、Edge 79）
-├── css/style.css       # 样式
-├── js/
-│   ├── main.js         # 入口：组装模块、绑定事件、发牌动画、全屏
-│   ├── game.js         # 游戏控制器（事件驱动）
-│   ├── state.js        # 状态管理 + 快照撤销
-│   ├── rules.js        # 纯规则函数（无副作用）
-│   ├── deck.js         # 牌组与发牌
-│   ├── render.js       # DOM 渲染（全量重建）
-│   ├── anim.js         # FLIP 位移动画 + 缓动常量
-│   ├── input.js        # 拖拽交互（pointer 事件）
-│   ├── audio.js        # Web Audio 合成音效
-│   ├── storage.js      # localStorage 持久化
-│   ├── achievements.js # 成就里程碑检测
-│   └── constants.js    # 全局常量
-└── docs/
-    ├── rules.md        # 游戏规则文档
-    └── design.md       # 技术设计文档
+shoop-da-whoop/
+├── index.html / main.js / style.css   # 首页（Raw Meme Collage）
+├── vite.config.js / package.json      # 站点级配置
+├── public/images/                     # 首页静态资源
+├── shared/                            # 共享样式与工具
+└── games/                             # 附属游戏
+    ├── solitaire/   (css/ js/ docs/)
+    ├── 1a2b/
+    └── othello/
 ```
 
-## 操作
-
-| 操作 | 方式 |
-| --- | --- |
-| 移动牌 | 拖拽 |
-| 收龙 | 点击 🐉 收龙按钮 / `C`（按钮高亮时生效） |
-| 新局 | `N` |
-| 撤销 | `U` / `Z` |
-| 静音 | `M` |
-| 横屏全屏 | 移动端 ⛶ 按钮 / `F` |
-
-> 桌面端为鼠标拖拽；移动端支持触摸拖拽，并额外显示横屏全屏按钮。
-
-## 文档
-
-- [游戏规则](docs/rules.md)
-- [技术设计](docs/design.md)
+详见 [games/solitaire/README.md](./games/solitaire/README.md)。
