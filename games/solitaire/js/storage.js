@@ -40,7 +40,15 @@ export const Storage = {
       if (!Array.isArray(d.freeCells) || d.freeCells.length !== 3) return null;
       const ok = COLORS.every(c => Array.isArray(d.foundations[c]));
       if (!ok) return null;
-      return { tableau: d.tableau, freeCells: d.freeCells, foundations: d.foundations, flowerSlot: d.flowerSlot || null };
+      // Validate the undo stack only shallowly: it must be an array whose every
+      // entry is itself a board snapshot (has a tableau). A single corrupted
+      // entry would break restoreSnapshot, so drop the whole stack in that case
+      // — the current board is still playable, just no undo.
+      let history = null;
+      if (Array.isArray(d.history)) {
+        history = d.history.every(h => h && Array.isArray(h.tableau)) ? d.history : null;
+      }
+      return { tableau: d.tableau, freeCells: d.freeCells, foundations: d.foundations, flowerSlot: d.flowerSlot || null, history };
     }
     catch { return null; }
   },

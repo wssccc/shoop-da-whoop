@@ -13,14 +13,16 @@ export function createInitialState() {
   });
 }
 
-// Wrap a persisted/incoming layout into a full state with an empty history.
+// Wrap a persisted/incoming layout into a full state. `layout.history` (when
+// present, e.g. restored from localStorage) becomes the undo stack; absent /
+// malformed values fall back to an empty stack so a fresh game stays clean.
 export function fromLayout(layout) {
   return {
     tableau: layout.tableau,
     freeCells: layout.freeCells,
     foundations: layout.foundations,
     flowerSlot: layout.flowerSlot,
-    history: [],
+    history: Array.isArray(layout.history) ? layout.history : [],
   };
 }
 
@@ -42,9 +44,14 @@ function snapshotClone(state, includeHistory = false) {
   return snap;
 }
 
-// Public serialisable form for localStorage (no history, no live references).
+// Public serialisable form for localStorage. Includes the undo stack so a
+// refresh keeps undo working — each entry is a board-only clone (snapshotClone
+// with the default `includeHistory=false` omits the history field), so there is
+// no recursive nesting and the whole thing stays shallow & JSON-safe.
 export function toSaveable(state) {
-  return snapshotClone(state);
+  const snap = snapshotClone(state);
+  snap.history = state.history.map(h => snapshotClone(h));
+  return snap;
 }
 
 // Push a restore point onto the undo stack.

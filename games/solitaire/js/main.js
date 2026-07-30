@@ -2,7 +2,7 @@
 // achievements together, and binds the toolbar buttons.
 
 
-import { captureRects, playFlip, FLIP_MS } from './anim.js';
+import { FLIP_MS, captureRects, playFlip } from './anim.js';
 import { Audio } from './audio.js';
 import { Game } from './game.js';
 import { DragController } from './input.js';
@@ -35,7 +35,9 @@ function renderAll() {
   const firstRects = captureRects(board);
   Render.board(game.getState());
   updateChrome();
-  playFlip(board, firstRects);
+  // playFlip returns the full animation time (incl. cascade stagger) so the
+  // win modal can be deferred until the final foundation flight has landed.
+  lastFlipMs = playFlip(board, firstRects) || FLIP_MS;
 }
 
 function updateChrome() {
@@ -150,8 +152,11 @@ game.on('dealing', () => {
 
 // 'win' fires synchronously right after 'change' (which started the FLIP
 // flight). Defer the modal until that flight has visually settled so the last
-// foundation cards land before the overlay appears.
+// foundation cards land before the overlay appears. On a winning solve the
+// cascade often runs many staggered cards, so wait for that full duration
+// rather than the single-card FLIP_MS.
 let winTimer = null;
+let lastFlipMs = FLIP_MS;
 game.on('win', () => {
   wins += 1;
   Storage.setWins(wins);
@@ -159,7 +164,7 @@ game.on('win', () => {
   winTimer = setTimeout(() => {
     // Guard: the user may have started a new game while we were waiting.
     if (Rules.isWin(game.getState())) showWin();
-  }, FLIP_MS + 120);
+  }, Math.max(FLIP_MS + 120, lastFlipMs + 160));
 });
 
 // ---- Toasts ----

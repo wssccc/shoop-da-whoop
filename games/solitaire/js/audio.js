@@ -29,15 +29,34 @@ export const Audio = {
     return ctx;
   },
 
-  // Browsers require a user gesture before audio can play.
+  // Browsers require a user gesture before audio can play, and iOS Safari will
+  // additionally suspend the context after backgrounding / long silences. Try
+  // `resume()` liberally (even from non-"suspended" states like the iOS-only
+  // "interrupted") and swallow rejection — it is a cheap no-op on engines that
+  // don't need it and a lifesaver on those that do.
   resume() {
     const c = this._ctx();
-    if (c && c.state === 'suspended') c.resume();
+    if (!c) return;
+    // Some Safari versions reject a synchronous resume() fired the instant the
+    // tab regains focus but accept it one event loop later, so retry on a microtask.
+    const tryResume = () => { try { const p = c.resume(); if (p && typeof p.then === 'function') p.catch(() => {}); } catch (_) {} };
+    tryResume();
+    setTimeout(tryResume, 0);
   },
 
   tone(freq, dur = 0.08, type = 'sine', gain = 0.08, delay = 0) {
     const c = this._ctx();
     if (!c || muted) return;
+    // If the context is not actively running (iOS Safari suspends it after the
+    // tab is backgrounded or a long silence), DO NOT schedule these nodes now.
+    // Oscillators queued against a suspended graph never fire and pile up until
+    // the context resumes, which on long sessions can exhaust resources. Kick a
+    // resume() instead and drop this one sound — subsequent calls are fine once
+    // the user's next gesture has unlocked the context.
+    if (c.state !== 'running') {
+      this.resume();
+      return;
+    }
     const t0 = c.currentTime + delay;
     const osc = c.createOscillator();
     const g = c.createGain();
@@ -63,3 +82,13 @@ export const Audio = {
   win() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.07, i * 0.12)); },
   error() { this.tone(150, 0.12, 'square', 0.05); },
 };
+
+// Re-arm the AudioContext when the tab becomes visible again. iOS Safari parks
+// the context on background and never auto-resumes, leaving the page "alive but
+// silent" until the next explicit user gesture — `visibilitychange`/`pageshow`
+// happen exactly when the user focuses back on the page, so we resume there.
+if (typeof document !== 'undefined') {
+  const _autoResume = () => Audio.resume();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) _autoResume(); });
+  window.addEventListener('pageshow', _autoResume);
+}

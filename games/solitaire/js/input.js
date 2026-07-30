@@ -15,6 +15,28 @@ function parseSlot(str) {
   return null;
 }
 
+// Resolve a pointer position (clientX/Y) to the [data-slot] element under it.
+//
+// We manually test the point against every slot's getBoundingClientRect()
+// instead of calling document.elementFromPoint(). The rest of the drag
+// pipeline — the floating ghost (positioned with getBoundingClientRect()) and
+// the FLIP animations — already speaks the layout-viewport CSS-pixel language,
+// so matching against that same API keeps every coordinate source consistent.
+// elementFromPoint(), by contrast, runs the browser's own hit-testing pass,
+// which under page zoom (the non-standard CSS `zoom` property, ancestor
+// transforms, some legacy renderers) drifts out of sync: a point sitting
+// dead-centre on a slot can resolve to a neighbour or to nothing, so drops land
+// in the wrong place or silently fail. A rect test is also immune to being
+// shadowed by overlapping elements (tooltips, overlays, the drag ghost itself).
+function slotAtPoint(x, y) {
+  const slots = document.querySelectorAll('#board [data-slot]');
+  for (const s of slots) {
+    const r = s.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return s;
+  }
+  return null;
+}
+
 export class DragController {
   constructor(board, game) {
     this.board = board;
@@ -53,13 +75,28 @@ export class DragController {
     const rects = origs.map(el => el.getBoundingClientRect());
     origs.forEach(el => el.classList.add('is-dragging'));
 
+    // Position each ghost on a DOCUMENT (layout-viewport) coordinate, not a
+    // visual-viewport one. getBoundingClientRect() and PointerEvent.clientX/Y
+    // speak the VISUAL viewport; a `position:fixed` ghost speaks the LAYOUT
+    // viewport. On iOS Safari ≥ 13, once the user pinch-zooms and pans the
+    // page, `visualViewport.offsetLeft/Top` become non-zero, so feeding the
+    // raw visual rect to a fixed element places the ghost in the wrong layout
+    // spot — i.e. the floating card appears offset from the finger even though
+    // capture (down) was correct. `position:absolute` + document coords makes
+    // the ghost ride along with the document the same way the real card does,
+    // so it stays visually pinned under any zoom/pan. (`position:absolute`
+    // inherits from `.card.ghost` below.)
+    const vv = window.visualViewport;
+    const offX = vv ? vv.offsetLeft : 0;
+    const offY = vv ? vv.offsetTop : 0;
+
     const ghosts = origs.map((el, i) => {
       const g = el.cloneNode(true);
       g.classList.add('ghost');
       g.classList.remove('is-dragging');
       const r = rects[i];
-      g.style.left = r.left + 'px';
-      g.style.top = r.top + 'px';
+      g.style.left = (r.left + offX + window.scrollX) + 'px';
+      g.style.top = (r.top + offY + window.scrollY) + 'px';
       g.style.zIndex = String(1000 + i);
       document.body.appendChild(g);
       return g;
@@ -93,9 +130,11 @@ export class DragController {
     const d = this.drag;
     clearHighlights();
     d.hover = null;
-    const el = document.elementFromPoint(x, y);
-    if (!el) return;
-    const slot = el.closest('[data-slot]');
+    // Manual rect hit-test instead of elementFromPoint() (see slotAtPoint):
+    // shares one coordinate source — getBoundingClientRect()/clientX/Y — with
+    // the floating ghost and the FLIP pipeline, so it stays correct under page
+    // zoom / ancestor transforms where elementFromPoint() drifts.
+    const slot = slotAtPoint(x, y);
     if (!slot) return;
     const desc = parseSlot(slot.dataset.slot);
     if (!desc) return;

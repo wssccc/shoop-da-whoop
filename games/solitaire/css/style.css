@@ -10,10 +10,11 @@
   --gold: #d8b15a;
   --ink: #e9efe6;
   --ink-dim: #9fb6a6;
-  --card-w: 72px;
-  --card-h: 102px;
+  --card-w: 96px;
+  --card-h: 136px;
   --gap: 10px;
   --radius: 8px;
+  --row-gap: 24px; /* toolbar ↔ first side-panel row; tweak freely */
   --red: #c0392b;
   --black: #161616;
   --green: #1e8449;
@@ -72,6 +73,10 @@ html, body {
   border-bottom: 1px solid var(--line);
   width: 100%;
   order: 0;
+  /* Toolbar is a real flex item (unlike the `display:contents` side panels),
+     so its margin-bottom participates in row height and pushes the next row
+     (free-cell / foundation panels) down by --row-gap. */
+  margin-bottom: var(--row-gap);
 }
 .brand { display: flex; align-items: center; }
 .brand > * + * { margin-left: 10px; }  /* flex `gap` fallback (legacy Safari) */
@@ -116,8 +121,8 @@ html, body {
 
 /* ---------- Board layout ---------- */
 .board {
-  max-width: 760px;
-  margin: 18px auto 40px;
+  max-width: 920px;
+  margin: 0 auto 40px;
   padding: 0 14px;
   touch-action: none; /* prevent scroll while dragging */
 }
@@ -130,19 +135,26 @@ html, body {
   /* `row-gap` removed: legacy Safari ignores it, which let wrapped rows
      (e.g. the tableau beneath the free-cell / dragon panel) touch. Emulated
      below with a negative top margin cancelling the first row's child margin. */
-  margin-top: -22px;
-  margin-bottom: 22px;
+  margin-top: calc(-1 * var(--row-gap));
+  margin-bottom: var(--row-gap);
 }
 /* Legacy-safe row-gap polyfill: every direct region sits 22px below the one
    above it. Works whether or not the browser supports `display: contents`,
    since margins are honoured by all flex engines. */
-.game-layout > * { margin-top: 22px; }
+.game-layout > * { margin-top: var(--row-gap); }
 .side-panel { display: contents; }
 .panel-content { display: flex; }
 .panel-content > * + * { margin-left: var(--gap); }  /* flex `gap` fallback */
 .cell-group { display: flex; }
 .cell-group > * + * { margin-left: var(--gap); }  /* flex `gap` fallback */
 .side-label { display: none; }
+/* Desktop: lay the top row out as  [龙牌区]  [花]  [红黑绿],
+   so the flower slot sits centred between the dragon panel and the
+   foundations. `.game-layout` uses `justify-content: space-between`, which
+   pushes the three regions apart and puts the flower in the middle. Order is
+   reset inside the mobile @media below. */
+.right-panel .panel-content { order: 8; }  /* foundations → right */
+.flower-slot              { order: 5; }  /* flower → middle */
 
 /* ---------- Slots ---------- */
 .slot {
@@ -235,11 +247,17 @@ html, body {
   display: grid;
   grid-template-columns: repeat(8, var(--card-w));
   gap: var(--gap);
-  justify-content: center;
+  /* `space-between` (not `center`): the grid container is the full board inner
+     width but 8 columns + 7 gaps sum to less than that, so `center` used to
+     pad both sides by ~27px — making the first column land inboard of the
+     free-cell / foundation panel above it. Distributing the slack between
+     columns aligns col-0 with fc-0 and col-7 with the foundations. Column
+     width itself is unchanged (still --card-w). */
+  justify-content: space-between;
   width: 100%;
   order: 10;
 }
-.col .card:not(:first-child) { margin-top: -74px; }
+.col .card:not(:first-child) { margin-top: -108px; }
 .col .card { pointer-events: auto; }
 
 /* ---------- Cards ---------- */
@@ -247,8 +265,21 @@ html, body {
   width: var(--card-w);
   height: var(--card-h);
   border-radius: var(--radius);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.08);
-  background: #efe9d8;
+  /* Paper-stock feel: a warm vertical gradient with a soft top-left sheen over
+     it, plus a beveled inner rim (top highlight + bottom shade) so the card
+     reads as physical stock instead of flat cream. Colours are hard-coded —
+     NOT `var()` — because Safari 13 / iOS 13 (our legacy floor) silently drops
+     a `background-image` whose gradient params reference CSS custom properties;
+     the `background-color` below is the safe flat fallback for those engines. */
+  background-color: #efe9d8;
+  background-image:
+    radial-gradient(120% 80% at 12% 8%, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 55%),
+    linear-gradient(135deg, #f8f3e3 0%, #efe9d8 46%, #e2dac2 100%);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.55),
+    inset 0 -3px 5px rgba(120,108,78,0.10),
+    inset 0 0 0 1px rgba(255,255,255,0.08);
   position: relative;
   cursor: grab;
   touch-action: none;
@@ -267,28 +298,22 @@ html, body {
 .corner.br { bottom: 3px; right: 4px; transform: rotate(180deg); }
 
 .rank-num {
-  font-size: 16px;
+  font-size: max(13px, calc(var(--card-w) * 0.22));
   font-weight: 700;
 }
 .glyph-small {
-  font-size: 14px;
+  font-size: max(12px, calc(var(--card-w) * 0.2));
 }
 
 .c-red   .corner { color: var(--red); }
 .c-green .corner { color: var(--green); }
 .c-black .corner { color: #1c1c1c; }
 
-.card.dragon {
-  background: #efe9d8;
-}
 .card.dragon .corner { color: var(--dragon); }
 .card.dragon.c-red .corner { color: var(--red); }
 .card.dragon.c-black .corner { color: #1c1c1c; }
 .card.dragon.c-green .corner { color: var(--green); }
 
-.card.flower {
-  background: #efe9d8;
-}
 .card.flower .corner { color: var(--flower); }
 
 .card.no-drag { cursor: default; }
@@ -304,7 +329,11 @@ html, body {
 /* Drag states */
 .card.is-dragging { visibility: hidden; }
 .card.ghost {
-  position: fixed;
+  /* `absolute` (not `fixed`): the drag controller positions the ghost on a
+     document coordinate so it stays pinned to the real card under any pinch-
+     zoom/pan (visualViewport drift on iOS Safari ≥13). See input.js ghost
+     creation. */
+  position: absolute;
   margin: 0;
   cursor: grabbing;
   transform-origin: center top;
@@ -405,7 +434,13 @@ html, body {
 .overlay {
   position: fixed; inset: 0;
   background: rgba(2,10,6,0.78);
-  display: grid; place-items: center;
+  /* Centre the modal. `display:flex` + align/justify `center` is a hard floor
+     on iOS/Safari < 13.1 where `place-items` (the old grid shorthand) silently
+     fails and leaves the card glued to the top edge; flexbox has been supported
+     since ancient Safari versions, so it is the safe option. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 50;
 }
 .overlay[hidden] { display: none; }
@@ -455,6 +490,18 @@ html, body {
 @keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
 
 /* ---------- Responsive ---------- */
+/* Tablet portrait (iPad/Android tablets held upright, ~768–834px). The mobile
+   breakpoint below only matches *landscape* windows, so portrait tablets would
+   otherwise fall through to the desktop 96px card and overflow: 8×96=838px is
+   wider than the viewport, the edge columns get clipped (col-0 pushed left off
+   screen) and the top-row foundations wrap under the dragon panel. Give this
+   band its own card size that keeps the desktop flex-wrap layout but fits the
+   whole board in one screen. card-h-28px exposure => -80px stack margin. */
+@media (orientation: portrait) and (min-width: 561px) and (max-width: 900px) {
+  :root { --card-w: 76px; --card-h: 108px; --gap: 8px; }
+  .col .card:not(:first-child) { margin-top: -80px; }
+}
+
 @media (orientation: landscape) and (max-width: 896px),
        (max-width: 560px) {
   :root { --card-w: 52px; --card-h: 74px; --gap: 6px; }
@@ -466,12 +513,22 @@ html, body {
     flex-wrap: nowrap;
     align-items: stretch;
     row-gap: 0; /* override desktop row-gap; column spacing now via margins */
+    /* Reset the desktop negative-margin row-gap polyfill: on mobile the
+       toolbar sits at the very top of the row, so a negative top margin would
+       pull the whole strip above the viewport edge. */
+    margin-top: 0;
     margin-bottom: 14px;
     position: relative;
   }
   /* Legacy Safari (< 14.1) ignores flex `gap`; emulate it with sibling margins
      so the toolbar / free-cell panel / tableau / foundation panel stay spaced. */
   .game-layout > * + * { margin-left: 8px; }
+  /* Desktop uses a negative-margin row-gap polyfill; reset it here so the
+     horizontal row layout doesn't get a stray top margin on every region. */
+  .game-layout > * { margin-top: 0; }
+  /* On mobile the toolbar is a vertical strip (align: stretch), don't give it
+     the desktop bottom gap. */
+  .toolbar-panel.side-panel { margin-bottom: 0; }
 
   .side-panel {
     display: flex;
@@ -503,6 +560,11 @@ html, body {
                   display: grid; grid-template-columns: repeat(8, var(--card-w)); gap: 6px;
                   justify-content: center; }
   .right-panel { order: 3; }
+  /* Reset the desktop "flower in the middle" ordering: on mobile the
+     right panel is a vertical strip, so fall back to source order
+     (foundations on top, flower beneath). */
+  .right-panel .panel-content { order: 0; }
+  .flower-slot              { order: 0; }
 
   .panel-content {
     flex-direction: column;
