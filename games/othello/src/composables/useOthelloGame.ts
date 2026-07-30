@@ -33,11 +33,16 @@ export function useOthelloGame() {
   const gameOver = ref(false);
   const showHelp = ref(false);
   const showSettings = ref(false);
+  // Transient notice shown when a player has no legal move and must pass.
+  // Holds the Player who just passed, or null when there's nothing to show.
+  const passNotice = ref<Player | null>(null);
 
   // Non-reactive guard (like useRef) to prevent re-entrant AI calls.
   let isAiRunning = false;
   let worker: Worker | null = null;
   let pendingAiResolve: (() => void) | null = null;
+  // Timer id for clearing the pass notice; non-reactive.
+  let passNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── Computed ────────────────────────────────────────────────
   const score = computed(() => game.value.getScore());
@@ -63,8 +68,15 @@ export function useOthelloGame() {
     worker = new MctsWorker();
     worker.onmessage = (e: MessageEvent) => {
       const { type, row, col } = e.data;
-      if (type === 'bestMove' && row >= 0 && col >= 0) {
-        applyMove(row, col);
+      if (type === 'bestMove') {
+        if (row >= 0 && col >= 0) {
+          applyMove(row, col);
+        } else {
+          // Defensive fallback: AI reported no legal move. Should not happen
+          // because afterGameChange pre-checks canCurrentPlayerMove, but we
+          // guard against race / corrupted state so the game never deadlocks.
+          skipTurn();
+        }
       }
       isAiRunning = false;
       isAiThinking.value = false;
@@ -143,17 +155,34 @@ export function useOthelloGame() {
       return;
     }
 
+    // Unified pass handling: regardless of whether the current player is the
+    // human or the AI, if they have no legal move they must pass. This is the
+    // fix for the deadlock where the AI would return {-1, -1} from the worker
+    // and nobody advanced the turn. We surface a transient UI notice before
+    // switching so the user can see *why* the turn skipped.
+    if (!game.value.canCurrentPlayerMove()) {
+      const passingPlayer = game.value.currentPlayer;
+      passNotice.value = passingPlayer;
+      if (passNoticeTimer !== null) {
+        clearTimeout(passNoticeTimer);
+      }
+      passNoticeTimer = setTimeout(() => {
+        passNotice.value = null;
+        passNoticeTimer = null;
+      }, 1200);
+      skipTurn();
+      return;
+    }
+
+    // Current player has at least one legal move — dispatch normally.
     if (game.value.currentPlayer !== humanPlayer.value) {
-      // AI's turn
+      // AI's turn. Because of the check above we know the AI has a legal move,
+      // so runAiMove -> worker is guaranteed to return a valid {row, col}.
       if (!isAiThinking.value && !isAiRunning) {
         runAiMove();
       }
-    } else {
-      // Human's turn — auto-skip if no legal moves
-      if (!game.value.canCurrentPlayerMove()) {
-        skipTurn();
-      }
     }
+    // Human's turn and has moves: wait for a click.
   }
 
   function runAiMove() {
@@ -251,8 +280,10 @@ export function useOthelloGame() {
 
       if (restored.isGameOver()) {
         gameOver.value = true;
-      } else if (restored.currentPlayer !== humanPlayer.value) {
-        runAiMove();
+      } else {
+        // Route every restored game (including "AI's turn but AI must pass")
+        // through the unified turn dispatcher so pass/deadlock logic applies.
+        nextTick(() => afterGameChange());
       }
     } else {
       // Fresh game — AI goes first if human is white
@@ -262,6 +293,10 @@ export function useOthelloGame() {
 
   onUnmounted(() => {
     worker?.terminate();
+    if (passNoticeTimer !== null) {
+      clearTimeout(passNoticeTimer);
+      passNoticeTimer = null;
+    }
   });
 
   // ── Composable output ──────────────────────────────────────
@@ -276,6 +311,7 @@ export function useOthelloGame() {
     gameOver,
     showHelp,
     showSettings,
+    passNotice,
     // Computed
     score,
     winner,

@@ -33,6 +33,7 @@ const {
   gameOver,
   showHelp,
   showSettings,
+  passNotice,
   score,
   winner,
   currentPlayer,
@@ -137,7 +138,10 @@ const winnerText = () => {
             v-if="isAiThinking"
             class="size-4 animate-pulse text-purple-400"
           />
-          <span>{{ turnText() }}</span>
+          <span v-if="passNotice !== null" class="text-amber-300">
+            {{ passNotice === humanPlayer ? '你无子可下,跳过回合' : 'AI 无子可下,跳过回合' }}
+          </span>
+          <span v-else>{{ turnText() }}</span>
         </div>
 
         <!-- Difficulty badge -->
