@@ -13,6 +13,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { OthelloGame, type Cell, type Player, type Position } from '../game/OthelloGame';
 import { clearGameState, loadGameState, loadSettings, saveGameState, saveSettings } from '../storage';
+import MctsWorker from '../worker/mcts.worker.ts?worker';
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
@@ -55,10 +56,11 @@ export function useOthelloGame() {
 
   // ── Worker lifecycle ───────────────────────────────────────
   function initWorker() {
-    worker = new Worker(
-      new URL('../worker/mcts.worker.ts', import.meta.url),
-      { type: 'module' },
-    );
+    // Use Vite's ?worker import to create a classic Worker (no `type: 'module'`),
+    // ensuring compatibility with iOS 13 / Safari 13 which doesn't support
+    // module workers. Vite bundles the worker code into a self-contained chunk
+    // so no import/export statements remain — a classic Worker is sufficient.
+    worker = new MctsWorker();
     worker.onmessage = (e: MessageEvent) => {
       const { type, row, col } = e.data;
       if (type === 'bestMove' && row >= 0 && col >= 0) {

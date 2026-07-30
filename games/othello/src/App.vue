@@ -185,7 +185,7 @@ const winnerText = () => {
       </div>
 
       <!-- ── Board ── -->
-      <div class="order-2 w-full max-w-[min(85vw,85vh,500px)]">
+      <div class="order-2 w-full max-w-[500px] max-w-[min(85vw,85vh,500px)]">
         <OthelloBoard
           :game="game"
           :human-player="humanPlayer"
