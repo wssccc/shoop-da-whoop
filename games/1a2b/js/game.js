@@ -2,7 +2,7 @@
 // ('change', 'sound', 'win', 'newgame') for the UI to react to. Mirrors
 // solitaire's Game class (on/emit, single source of truth, no DOM here).
 
-import { DIGITS } from './constants.js';
+import { DIGITS, MAX_GUESSES } from './constants.js';
 import * as Rules from './rules.js';
 import { createInitialState } from './state.js';
 
@@ -48,7 +48,7 @@ export class Game {
 
   /** Append a digit char to the in-progress input (refuses if locked). */
   inputDigit(d) {
-    if (this.state.won) return false;
+    if (this.state.won || this.state.lost) return false;
     if (this.state.input.length >= DIGITS) return false;
     // No repeats within a single guess (matches the secret invariant).
     if (this.state.input.includes(d)) {
@@ -62,7 +62,7 @@ export class Game {
 
   /** Remove the last entered digit. */
   backspace() {
-    if (this.state.won) return false;
+    if (this.state.won || this.state.lost) return false;
     if (this.state.input.length === 0) return false;
     this.state.input = this.state.input.slice(0, -1);
     this.emit('change');
@@ -71,7 +71,7 @@ export class Game {
 
   /** Clear the whole in-progress guess. */
   clearInput() {
-    if (this.state.won) return false;
+    if (this.state.won || this.state.lost) return false;
     if (this.state.input.length === 0) return false;
     this.state.input = '';
     this.emit('change');
@@ -84,6 +84,8 @@ export class Game {
    */
   submitGuess() {
     if (this.state.won) return { ok: false, reason: 'already-won' };
+    if (this.state.lost) return { ok: false, reason: 'lost' };
+    if (this.state.guesses.length >= MAX_GUESSES) return { ok: false, reason: 'max-guesses' };
 
     const input = this.state.input;
     const v = Rules.validateGuess(input);
@@ -104,6 +106,12 @@ export class Game {
       this.state.won = true;
       this.sound('win');
       this.emit('win', { guesses: this.state.guesses.length, entry });
+      this.emit('change');
+    } else if (this.state.guesses.length >= MAX_GUESSES) {
+      // Out of shots — reveal the secret and end the game as a loss.
+      this.state.lost = true;
+      this.sound('lose');
+      this.emit('lose', { secret: this.state.secret, guesses: this.state.guesses.length, entry });
       this.emit('change');
     }
 

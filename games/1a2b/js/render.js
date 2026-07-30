@@ -1,7 +1,7 @@
 // DOM rendering — pure output, no state mutation. Mirrors solitaire's render.js
 // convention (a `Render` namespace object rebuilding its sections from state).
 
-import { DIGITS } from './constants.js';
+import { DIGITS, MAX_GUESSES } from './constants.js';
 
 // ---- builders (return detached elements) ----
 
@@ -33,11 +33,34 @@ export function buildRow(entry, opts = {}) {
   return row;
 }
 
+/** A reserved-but-unused history slot: faint placeholder mirroring a real row. */
+export function buildEmptyRow() {
+  const row = document.createElement('div');
+  row.className = 'history-row empty';
+  const num = document.createElement('span');
+  num.className = 'history-num';
+  num.textContent = '\u00B7 \u00B7 \u00B7 \u00B7';
+  row.appendChild(num);
+  return row;
+}
+
 export const Render = {
   /** The 4 input slots: filled digits + the pulsing cursor on the next slot. */
   input(state) {
     const host = document.getElementById('input-display');
     host.textContent = '';
+
+    // Game over: reveal the secret that beat the player.
+    if (state.lost) {
+      for (let i = 0; i < DIGITS; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'slot reveal';
+        slot.textContent = state.secret[i];
+        host.appendChild(slot);
+      }
+      return;
+    }
+
     const filled = state.input.length;
     for (let i = 0; i < DIGITS; i++) {
       const slot = document.createElement('div');
@@ -52,28 +75,20 @@ export const Render = {
     }
   },
 
-  /** Full rebuild of the guess history (newest appended at the bottom). */
+  /** Full rebuild of the guess history — always exactly MAX_GUESSES rows. */
   history(state) {
     const host = document.getElementById('history');
     host.textContent = '';
 
-    // Strictly recreate the placeholder each render: assigning textContent=''
-    // above detaches the previous #history-empty node, so getElementById would
-    // return null on a later 0-guess render and break appendChild.
-    if (state.guesses.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'history-empty';
-      empty.id = 'history-empty';
-      empty.textContent = '输入 4 位不重复数字，猜中即 4A0B';
-      host.appendChild(empty);
-      return;
+    const filled = state.guesses.length;
+    for (let i = 0; i < MAX_GUESSES; i++) {
+      const g = state.guesses[i];
+      if (g) {
+        host.appendChild(buildRow(g, { win: i === filled - 1 && state.won }));
+      } else {
+        host.appendChild(buildEmptyRow());
+      }
     }
-    state.guesses.forEach((g, i) => {
-      host.appendChild(buildRow(g, { win: i === state.guesses.length - 1 && state.won }));
-    });
-
-    // Auto-scroll to the newest entry.
-    host.scrollTop = host.scrollHeight;
   },
 
   /** The compact stats strip in the toolbar (games / best / average). */

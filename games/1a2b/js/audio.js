@@ -62,6 +62,8 @@ export const Audio = {
   submit() { this.tone(520, 0.06, 'square', 0.05); this.tone(392, 0.07, 'sine', 0.05, 0.03); },
   // Triumph: ascending C-E-G-C, the SHOOP DA WHOOP moment.
   win() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.2, 'triangle', 0.07, i * 0.12)); },
+  // Out of ammo: a descending stumble for running out of guesses.
+  lose() { [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.22, 'sawtooth', 0.05, i * 0.12)); },
   // Low dull buzz for an invalid move.
   error() { this.tone(150, 0.12, 'square', 0.05); },
 };

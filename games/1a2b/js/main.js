@@ -53,9 +53,10 @@ function toggleTheme() {
 
 function updateFireButton() {
   const btn = $('#keypad .key-fire');
-  const ready = game.state.input.length === 4 && !game.state.won;
+  const over = game.state.won || game.state.lost;
+  const ready = game.state.input.length === 4 && !over;
   btn.classList.toggle('ready', ready);
-  btn.disabled = !ready || game.state.won;
+  btn.disabled = !ready;
 }
 
 function renderAll() {
@@ -89,6 +90,17 @@ function playWinCelebration() {
   overlay.classList.add('celebrate');
   const cleanup = () => overlay.classList.remove('celebrate');
   // the longest animation among stamp/splash wins the race
+  overlay.addEventListener('animationend', cleanup, { once: true });
+  setTimeout(cleanup, 1200);
+}
+
+/** Trigger the out-of-shots reveal: a sombre stamp + content pop. */
+function playLoseCelebration() {
+  const overlay = $('#lose-overlay');
+  overlay.hidden = false;
+
+  overlay.classList.add('celebrate');
+  const cleanup = () => overlay.classList.remove('celebrate');
   overlay.addEventListener('animationend', cleanup, { once: true });
   setTimeout(cleanup, 1200);
 }
@@ -144,6 +156,18 @@ function onWin(payload) {
   renderAll();
 }
 
+// ---- Lose flow ----
+
+function onLose(payload) {
+  // Out of guesses: drop the in-progress save so a refresh starts fresh.
+  Storage.clearSave();
+
+  playLoseCelebration();
+
+  $('#lose-result').textContent = payload.secret;
+  renderAll();
+}
+
 // ---- Game events ----
 
 game.on('newgame', () => { /* sound handled below; render via 'change' */ });
@@ -151,9 +175,10 @@ game.on('sound', name => { Audio.resume(); if (Audio[name]) Audio[name](); });
 game.on('change', () => {
   renderAll();
   // Persist the in-progress state only while a game is actually live.
-  if (!game.state.won) Storage.saveGame(game.state);
+  if (!game.state.won && !game.state.lost) Storage.saveGame(game.state);
 });
 game.on('win', onWin);
+game.on('lose', onLose);
 
 // ---- Actions ----
 
@@ -164,11 +189,12 @@ function doNewGame() {
 
 async function requestNewGame() {
   // Confirm only if there's measurable progress to throw away.
-  if (game.state.guesses.length > 0 && !game.state.won) {
+  if (game.state.guesses.length > 0 && !game.state.won && !game.state.lost) {
     const ok = await confirmDialog('当前局有未完成的进度，确定开始新局吗？');
     if (!ok) return;
   }
   $('#win-overlay').hidden = true;
+  $('#lose-overlay').hidden = true;
   doNewGame();
 }
 
@@ -180,6 +206,7 @@ async function requestReset() {
   muted = Storage.getMuted();
   Audio.setMuted(muted);
   $('#win-overlay').hidden = true;
+  $('#lose-overlay').hidden = true;
   doNewGame();
   applyMuteIcon();
   showToast('已清除全部记录');
@@ -232,6 +259,7 @@ function shakeInput() {
 function handleKey(key) {
   Audio.resume();
   if (key === 'fire') {
+    if (game.state.won || game.state.lost) return;
     const res = game.submitGuess();
     if (res.ok) {
       fireRecoil();
@@ -279,6 +307,10 @@ $('#btn-reset').addEventListener('click', requestReset);
 $('#btn-fullscreen').addEventListener('click', toggleFullscreen);
 $('#win-again').addEventListener('click', () => {
   $('#win-overlay').hidden = true;
+  doNewGame();
+});
+$('#lose-again').addEventListener('click', () => {
+  $('#lose-overlay').hidden = true;
   doNewGame();
 });
 

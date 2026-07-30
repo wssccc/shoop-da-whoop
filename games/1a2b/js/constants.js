@@ -4,6 +4,10 @@
 
 export const DIGITS = 4; // classic 1A2B: a 4-digit code with unique digits
 
+// A game is lost after this many wrong guesses. Drives the 8 reserved history
+// slots — the middle region never grows beyond this count.
+export const MAX_GUESSES = 8;
+
 // localStorage key prefix — short, namespaced like solitaire's `szsol.`.
 export const PREFIX = 'sz1a2b.';
 export const STORAGE_STATS = PREFIX + 'stats';

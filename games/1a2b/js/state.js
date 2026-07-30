@@ -14,6 +14,7 @@ export function createInitialState() {
     guesses: [],
     input: '',
     won: false,
+    lost: false,
   };
 }
 
@@ -24,6 +25,7 @@ export function toSaveable(state) {
     guesses: state.guesses.map(g => ({ guess: g.guess, a: g.a, b: g.b })),
     input: state.input,
     won: state.won,
+    lost: state.lost,
   };
 }
 
@@ -33,7 +35,7 @@ export function toSaveable(state) {
  */
 export function fromSaveable(data) {
   if (!data || typeof data !== 'object') return null;
-  const { secret, guesses, input, won } = data;
+  const { secret, guesses, input, won, lost } = data;
   // Secret: 4 unique digits.
   if (typeof secret !== 'string' || secret.length !== DIGITS || !/^\d+$/.test(secret) || !hasUniqueDigits(secret)) {
     return null;
@@ -50,5 +52,6 @@ export function fromSaveable(data) {
     return null;
   }
   if (typeof won !== 'boolean') return null;
-  return { secret, guesses, input, won };
+  // lost defaults to false so older saves (pre-8-guess-cap) still load.
+  return { secret, guesses, input, won, lost: lost === true };
 }

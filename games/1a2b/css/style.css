@@ -67,15 +67,26 @@ body {
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   text-align: center;
+  /* Center the #app card both horizontally & vertically in the viewport.
+     Keeps the card centered with margin between content and the edges. */
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #app {
-  min-height: 100vh;
+  /* No forced viewport height: the card hugs its content and ends right below
+     the keypad. Grows naturally on small screens if content overflows. */
   max-width: 30rem;
-  margin: 0 auto;
+  margin: auto;
   display: flex;
   flex-direction: column;
-  padding: 0.8rem 1rem env(safe-area-inset-bottom, 1rem);
+  /* env(safe-area-inset-bottom, 1rem) resolves to 0 on desktop (the variable is
+     *defined* as 0, so the fallback never kicks in). max() guarantees at least
+     1rem of padding under the keypad everywhere, still growing on notched/home-
+     indicator devices. */
+  padding: 0.8rem 1rem max(1rem, env(safe-area-inset-bottom));
   gap: 0.7rem;
   background: var(--bg);
   border-radius: 12px;
@@ -156,25 +167,22 @@ body {
 #btn-mute.muted { color: var(--ink-dim); border-color: var(--line); }
 
 /* ---------- History ---------- */
+/* Fixed-size box: exactly MAX_GUESSES (8) reserved rows laid out in 2 columns.
+   Columns fill top-to-bottom, then move right (grid-auto-flow: column) so the
+   reading order is left-column 1..4, right-column 5..8. Never scrolls. */
 .history {
-  flex: 1 1 auto;
-  min-height: 8rem;
-  max-height: 40vh;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: hidden;
   background-color: var(--bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  scroll-behavior: smooth;
-}
-.history-empty {
-  margin: auto;
-  padding: 0.5rem 0;
-  color: var(--ink-dim);
-  font-size: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  row-gap: 0;
+  column-gap: 0.6rem;
 }
 
 .history-row {
@@ -185,6 +193,14 @@ body {
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--line);
   animation: slideIn 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* Reserved-but-unused slot: a faint ruling line, no slide-in animation. */
+.history-row:last-child,
+.history-row:nth-child(4) { border-bottom: none; }
+.history-row.empty { animation: none; }
+.history-row.empty .history-num {
+  color: var(--slot-empty);
+  opacity: 0.4;
 }
 .history-num {
   font-family: var(--font-mono);
@@ -250,6 +266,12 @@ body {
   border-bottom-color: var(--accent);
   animation: caret 0.9s steps(1) infinite;
 }
+/* revealed secret after running out of guesses */
+.slot.reveal {
+  color: var(--danger);
+  border-bottom-color: var(--danger);
+  animation: none;
+}
 
 /* ---------- Keypad ---------- */
 .keypad {
@@ -275,21 +297,14 @@ body {
   color: var(--warn);
   border-color: var(--warn-border);
 }
-.key-clear {
-  font-size: clamp(1rem, 5vw, 1.3rem);
-  color: var(--danger);
-  border-color: var(--danger-border);
-}
 .key-fire {
-  grid-column: 1 / -1;
   font-weight: bold;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   color: #fff;
   background: var(--accent);
   border: none;
   box-shadow: var(--key-top), var(--key-drop);
-  height: clamp(2.8rem, 14vw, 3.4rem);
-  font-size: clamp(1.1rem, 5.5vw, 1.4rem);
+  font-size: clamp(1rem, 5vw, 1.3rem);
 }
 .key-fire:hover { filter: brightness(1.04); }
 .key-fire:disabled {
@@ -398,6 +413,44 @@ body {
   letter-spacing: 0.05em;
 }
 .win-result { margin: 0.6rem 0 1.2rem; color: var(--b); font-size: 1.1rem; }
+
+/* Lose: out-of-shots reveal */
+.lose-content { position: relative; z-index: 60; text-align: center; animation: pop 0.4s ease-out both; }
+.lose-stamp {
+  display: inline-block;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--danger);
+  border: 2px solid var(--danger);
+  background: var(--bg);
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  transform: rotate(-6deg);
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.1em;
+}
+.lose-overlay.celebrate .lose-stamp { animation: stampPop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.lose-shoop {
+  font-size: clamp(1.6rem, 7vw, 2.6rem);
+  font-weight: bold;
+  color: var(--danger);
+  letter-spacing: 0.05em;
+}
+.lose-label {
+  margin-top: 0.6rem;
+  color: var(--ink-dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lose-result {
+  margin: 0.3rem 0 1.2rem;
+  color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: clamp(1.8rem, 8vw, 2.6rem);
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
+}
 
 /* Confirm dialog */
 .confirm-box {

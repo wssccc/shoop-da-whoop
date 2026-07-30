@@ -42,13 +42,11 @@
       </div>
     </header>
 
-    <!-- Guess history (newest at bottom, auto-scrolls) -->
-    <section class="history" id="history" aria-label="猜测历史">
-      <div class="history-empty" id="history-empty">输入 4 位不重复数字，猜中即 4A0B</div>
-    </section>
-
     <!-- Current input display: 4 slots -->
     <section class="input-display" id="input-display" aria-label="当前输入"></section>
+
+    <!-- Guess history (2-column, 8 reserved rows, newest fills in order) -->
+    <section class="history" id="history" aria-label="猜测历史"></section>
 
     <!-- Telephone-style number keypad -->
     <section class="keypad" id="keypad" aria-label="数字键盘">
@@ -63,7 +61,6 @@
       <button class="key" data-key="9">9</button>
       <button class="key key-back" data-key="back" title="退格" aria-label="退格">⌫</button>
       <button class="key" data-key="0">0</button>
-      <button class="key key-clear" data-key="clear" title="清空" aria-label="清空">C</button>
       <button class="key key-fire" data-key="fire" title="提交 (Enter)">⚡ 提交</button>
     </section>
 
@@ -78,6 +75,17 @@
         <div class="win-shoop">SHOOP DA WHOOP!</div>
         <div class="win-result" id="win-result"></div>
         <button class="btn-primary" id="win-again">再来一局</button>
+      </div>
+    </div>
+
+    <!-- Out-of-shots (lose) overlay -->
+    <div class="overlay lose-overlay" id="lose-overlay" hidden>
+      <div class="lose-content">
+        <div class="lose-stamp">哥们</div>
+        <div class="lose-shoop">你还得练</div>
+        <div class="lose-label">正确答案</div>
+        <div class="lose-result" id="lose-result"></div>
+        <button class="btn-primary" id="lose-again">再来一局</button>
       </div>
     </div>
 
