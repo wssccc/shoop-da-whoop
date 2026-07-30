@@ -64,11 +64,11 @@ onUnmounted(() => {
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50 flex items-center justify-center"
+        class="fixed left-0 top-0 z-50 flex h-full w-full items-center justify-center"
       >
         <!-- Overlay -->
         <div
-          class="absolute inset-0 bg-black/50"
+          class="absolute left-0 top-0 h-full w-full bg-black/50"
           @click="close"
         />
 

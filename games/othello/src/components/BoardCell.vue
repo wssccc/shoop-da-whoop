@@ -54,7 +54,11 @@ function handleClick() {
     ]"
     @click="handleClick"
   >
-    <div class="absolute inset-0 flex items-center justify-center">
+    <!--
+      Use explicit top/left/width/height instead of `inset-0` (CSS `inset`
+      shorthand), which is not supported in iOS 13.0 / Safari 13.0.
+    -->
+    <div class="absolute left-0 top-0 flex h-full w-full items-center justify-center">
       <!-- Valid-move dot (empty + legal) -->
       <div
         v-if="player === 0 && isValidMove"
