@@ -13,6 +13,7 @@
 // @vitejs/plugin-legacy and postcss-preset-env / autoprefixer.
 
 import legacy from '@vitejs/plugin-legacy';
+import vue from '@vitejs/plugin-vue';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -32,7 +33,19 @@ export default defineConfig({
       modernPolyfills: true,
       // legacy bundle pulls in a curated core-js polyfill set automatically.
     }),
+    // Vue 3 SFC compiler for the Othello entry (.vue). Harmless for
+    // the plain-JS entries (home / solitaire / 1a2b): the plugin only
+    // processes .vue files, so it won't touch their vanilla JS.
+    vue(),
   ],
+
+  // `@` alias mirrors the Othello tsconfig `paths` (`@/* -> ./src/*`) so the
+  // TSX sources keep their `@/components/...` imports under the MPA build.
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'games/othello/src'),
+    },
+  },
 
   build: {
     outDir: 'dist',
