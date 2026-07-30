@@ -14,7 +14,7 @@ html {
 
 body {
   font-family: 'Comic Sans MS', 'Comic Sans', cursive, sans-serif;
-  background: url('/images/mt.jpg') repeat top left;
+  background: #f5f0e8;
   color: #000;
   line-height: 1.5;
   min-height: 100vh;
