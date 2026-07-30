@@ -96,7 +96,10 @@ const winnerText = () => {
               : ''"
           >
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-3 w-3 rounded-full bg-gradient-to-br from-gray-500 to-black shadow-sm" />
+              <span
+                class="inline-block h-3 w-3 rounded-full shadow-sm"
+                :style="{ backgroundColor: '#000000', backgroundImage: 'linear-gradient(135deg, #6b7280, #000000)' }"
+              />
               <span class="text-lg font-bold text-white">{{ score.black }}</span>
             </div>
             <BaseBadge variant="secondary" class="text-[10px]">
@@ -114,7 +117,10 @@ const winnerText = () => {
               : ''"
           >
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-3 w-3 rounded-full bg-gradient-to-br from-white to-gray-300 shadow-sm" />
+              <span
+                class="inline-block h-3 w-3 rounded-full shadow-sm"
+                :style="{ backgroundColor: '#ffffff', backgroundImage: 'linear-gradient(135deg, #ffffff, #d1d5db)' }"
+              />
               <span class="text-lg font-bold text-white">{{ score.white }}</span>
             </div>
             <BaseBadge variant="secondary" class="text-[10px]">
@@ -243,12 +249,18 @@ const winnerText = () => {
 
         <div class="flex w-full gap-4">
           <div class="flex flex-1 flex-col items-center gap-1 rounded-lg bg-slate-900/50 p-3">
-            <span class="inline-block h-4 w-4 rounded-full bg-gradient-to-br from-gray-500 to-black" />
+            <span
+              class="inline-block h-4 w-4 rounded-full"
+              :style="{ backgroundColor: '#000000', backgroundImage: 'linear-gradient(135deg, #6b7280, #000000)' }"
+            />
             <span class="text-2xl font-bold text-white">{{ score.black }}</span>
             <span class="text-xs text-slate-400">黑棋</span>
           </div>
           <div class="flex flex-1 flex-col items-center gap-1 rounded-lg bg-slate-900/50 p-3">
-            <span class="inline-block h-4 w-4 rounded-full bg-gradient-to-br from-white to-gray-300" />
+            <span
+              class="inline-block h-4 w-4 rounded-full"
+              :style="{ backgroundColor: '#ffffff', backgroundImage: 'linear-gradient(135deg, #ffffff, #d1d5db)' }"
+            />
             <span class="text-2xl font-bold text-white">{{ score.white }}</span>
             <span class="text-xs text-slate-400">白棋</span>
           </div>

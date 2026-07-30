@@ -33,6 +33,35 @@ const bgClass = computed(() =>
   isDark.value ? 'bg-green-700' : 'bg-green-600',
 );
 
+/**
+ * Inline fill for the piece. Uses real gradient CSS (no CSS custom
+ * properties as gradient arguments) which every browser — including iOS 13 /
+ * Safari 13 — can parse. `backgroundColor` is a solid fallback so the piece
+ * never disappears even if the gradient is stripped.
+ *
+ * Why not the `bg-gradient-to-br from-* to-*` utilities: Tailwind v3 emits
+ * them as `linear-gradient(var(--tw-gradient-position), var(--tw-gradient-stops))`.
+ * Safari 13 drops the whole `background-image` declaration when a gradient's
+ * argument list is built from multiple `var()`, making the piece transparent.
+ */
+const pieceStyle = computed(() => {
+  if (props.player === 1) {
+    // Black: gradient from gray-500 (#6b7280) down to black, mirroring the
+    // previous `from-gray-500 to-black` look. `to-br` == 135deg.
+    return {
+      backgroundColor: '#000000',
+      backgroundImage: 'linear-gradient(135deg, #6b7280, #000000)',
+      boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.3)',
+    };
+  }
+  // White: gradient from white to gray-300 (#d1d5db).
+  return {
+    backgroundColor: '#ffffff',
+    backgroundImage: 'linear-gradient(135deg, #ffffff, #d1d5db)',
+    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2)',
+  };
+});
+
 function handleClick() {
   if (props.isDisabled) return;
   emit('click', props.row, props.col);
@@ -55,33 +84,33 @@ function handleClick() {
     @click="handleClick"
   >
     <!--
-      Use explicit top/left/width/height instead of `inset-0` (CSS `inset`
-      shorthand), which is not supported in iOS 13.0 / Safari 13.0.
+      Stretch with `top/right/bottom/left` (not `inset` shorthand) so the
+      absolutely-positioned child fills the parent's padding-box.  Using
+      `h-full w-full` would resolve to 0 because the parent has `h-0`.
+      Individual `top/right/bottom/left` are supported since CSS1/CSS2.
     -->
-    <div class="absolute left-0 top-0 flex h-full w-full items-center justify-center">
+    <div class="absolute bottom-0 left-0 right-0 top-0 flex items-center justify-center">
       <!-- Valid-move dot (empty + legal) -->
       <div
         v-if="player === 0 && isValidMove"
         class="h-[22%] w-[22%] rounded-full bg-black/20 transition-transform hover:scale-125"
       />
 
-      <!-- Piece -->
+      <!--
+        Piece. Fill is applied via the inline `pieceStyle` (standard CSS
+        gradient + solid fallback), NOT the `bg-gradient-to-br from-* to-*`
+        utilities — those rely on CSS custom properties inside a
+        `linear-gradient()` argument list, which iOS 13 / Safari 13 cannot
+        parse, rendering the piece fully transparent.
+      -->
       <div
         v-if="player !== 0"
         class="flex h-[72%] w-[72%] items-center justify-center rounded-full"
         :class="[
           isFlipping ? 'animate-flip' : '',
-          player === 1
-            ? 'bg-gradient-to-br from-gray-500 to-black'
-            : 'bg-gradient-to-br from-white to-gray-300',
           isLastMove ? 'ring-2 ring-yellow-400' : '',
         ]"
-        :style="{
-          boxShadow:
-            player === 1
-              ? 'inset 0 2px 4px rgba(255,255,255,0.2), 0 2px 4px rgba(0,0,0,0.3)'
-              : 'inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2)',
-        }"
+        :style="pieceStyle"
       />
     </div>
   </div>

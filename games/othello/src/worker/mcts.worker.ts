@@ -46,8 +46,8 @@ self.onmessage = (e: MessageEvent<FindBestMoveMessage>) => {
 
   const response: BestMoveResponse = {
     type: 'bestMove',
-    row: move?.row ?? -1,
-    col: move?.col ?? -1,
+    row: move ? move.row : -1,
+    col: move ? move.col : -1,
     elapsed: Math.round(elapsed),
   };
 
