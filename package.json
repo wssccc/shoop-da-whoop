@@ -7,14 +7,16 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite preview",
-    "typecheck": "vue-tsc --noEmit -p games/othello/tsconfig.app.json",
+    "typecheck": "vue-tsc --noEmit -p games/othello/tsconfig.app.json && vue-tsc --noEmit -p games/solitaire/tsconfig.app.json",
     "legacy-check": "vite build && ls -la dist/assets"
   },
   "dependencies": {
+    "@vueuse/core": "^14.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-vue-next": "^0.468.0",
+    "motion-v": "^2.3.0",
     "tailwind-merge": "^3.4.0",
     "vue": "^3.5.13",
     "zod": "^4.3.5"

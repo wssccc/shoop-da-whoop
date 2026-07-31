@@ -9,31 +9,31 @@ import {
     RANK_MAX,
     RANK_MIN,
     TABLEAU_COLS,
-    TYPE_DRAGON,
-    TYPE_FLOWER,
-    TYPE_NUMBER,
-} from './constants.js';
+} from './constants';
+import type { Card } from './types';
 
-// Build a fresh, ordered deck of 40 cards (plain data objects):
-// 27 number cards (3 colours × ranks 1..9) + 12 dragons (3 × 4) + 1 flower.
-export function createDeck() {
-  const cards = [];
+/** Build a fresh, ordered deck of 40 cards (plain data objects). */
+export function createDeck(): Card[] {
+  const cards: Card[] = [];
   for (const color of COLORS) {
     for (let r = RANK_MIN; r <= RANK_MAX; r++) {
-      cards.push({ id: `n-${color}-${r}`, type: TYPE_NUMBER, color, rank: r });
+      cards.push({ id: `n-${color}-${r}`, type: 'number', color, rank: r });
     }
   }
   for (const color of COLORS) {
     for (let i = 0; i < DRAGON_COUNT_PER_COLOR; i++) {
-      cards.push({ id: `dragon-${color}-${i}`, type: TYPE_DRAGON, color });
+      cards.push({ id: `dragon-${color}-${i}`, type: 'dragon', color });
     }
   }
-  cards.push({ id: 'flower', type: TYPE_FLOWER });
+  cards.push({ id: 'flower', type: 'flower' });
   return cards;
 }
 
-// Fisher–Yates shuffle (returns a new array).
-export function shuffle(arr, rng = Math.random) {
+/** Fisher–Yates shuffle (returns a new array). */
+export function shuffle<T>(
+  arr: readonly T[],
+  rng: () => number = Math.random,
+): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -42,10 +42,10 @@ export function shuffle(arr, rng = Math.random) {
   return a;
 }
 
-// Deal the shuffled deck evenly across the 8 tableau columns (5 each, all face up).
-export function deal() {
+/** Deal the shuffled deck evenly across the 8 tableau columns (5 each, all face up). */
+export function deal(): Card[][] {
   const deck = shuffle(createDeck());
-  const tableau = Array.from({ length: TABLEAU_COLS }, () => []);
+  const tableau: Card[][] = Array.from({ length: TABLEAU_COLS }, () => []);
   for (let i = 0; i < deck.length; i++) {
     tableau[i % TABLEAU_COLS].push(deck[i]);
   }

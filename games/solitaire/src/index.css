@@ -1,0 +1,928 @@
+/* Solitaire — Vue 3 build.
+ *
+ * Layers:
+ *   1. @tailwind base/components/utilities  (shadcn-vue-style tokens, drives
+ *      the copied BaseButton/BaseBadge/BaseDialog and any utility class).
+ *   2. Solitaire aesthetic — ported near-verbatim from `css/style.css`
+ *      (already iOS 13 / Safari 13 hardened; rewriting risk > reward). The
+ *      original ID selectors (`#btn-new` etc.) were generalised into class
+ *      selectors since the DOM is now component-rendered.
+ *
+ * iOS 13 hardening notes retained inline; see /memories/legacy-browser-css.md
+ * and /memories/display-contents-margin-rowgap.md for the full rationale.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * shadcn-vue design tokens (consumed by tailwind.config theme + BaseButton).
+ *.ported verbatim from othello/src/index.css so the reused UI components
+ * resolve their `--primary` / `--background` / etc. utilities.
+ * ============================================================ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.625rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+/* ============================================================
+ * Solitaire aesthetic (ported from css/style.css, iOS-13 hardened).
+ * ============================================================ */
+:root {
+  --bg: #06140c;
+  --felt: #0d2b1a;
+  --felt-2: #0a2013;
+  --panel: #0e2a1b;
+  --line: #1c5236;
+  --line-hi: #2f8a5b;
+  --gold: #d8b15a;
+  --ink: #e9efe6;
+  --ink-dim: #9fb6a6;
+  --card-w: 96px;
+  --card-h: 136px;
+  --gap: 10px;
+  --radius: 8px;
+  --row-gap: 24px; /* toolbar ↔ first side-panel row */
+  --red: #c0392b;
+  --black: #161616;
+  --green: #1e8449;
+  --dragon: #12b3a4;
+  --flower: #d63384;
+}
+
+* {
+  box-sizing: border-box;
+  /* The whole board is a drag surface: forbid selection, long-press callouts,
+     tap highlights and native element dragging everywhere so they never hijack a
+     card drag. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+html {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: radial-gradient(
+    140% 120% at 50% -10%,
+    var(--felt) 0%,
+    var(--felt-2) 55%,
+    var(--bg) 100%
+  );
+  color: var(--ink);
+  font-family: 'DejaVu Sans Mono', 'SFMono-Regular', 'Consolas', 'Menlo', monospace;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-x pan-y;
+  -webkit-touch-callout: none;
+}
+
+/* ---------- Top bar ---------- */
+.toolbar-panel,
+.toolbar-panel.side-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* gap removed: legacy Safari (< 14.1) ignores flex `gap`; `space-between`
+     already separates the brand and controls row, so no fallback needed here. */
+  padding: 12px 18px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0));
+  border-bottom: 1px solid var(--line);
+  width: 100%;
+  order: 0;
+  /* Toolbar is a real flex item (unlike the `display:contents` side panels),
+     so its margin-bottom participates in row height and pushes the next row
+     (free-cell / foundation panels) down by --row-gap. */
+  margin-bottom: var(--row-gap);
+}
+.brand {
+  display: flex;
+  align-items: center;
+}
+.brand > * + * {
+  margin-left: 10px; /* flex `gap` fallback (legacy Safari) */
+}
+.brand-glyph {
+  font-size: 22px;
+  color: var(--dragon);
+  text-shadow: 0 0 12px rgba(18, 179, 164, 0.6);
+}
+.brand h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.controls {
+  display: flex;
+  align-items: center;
+}
+.controls > * + * {
+  margin-left: 8px; /* flex `gap` fallback (legacy Safari) */
+}
+.controls button,
+.wins-pill {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: rgba(12, 40, 26, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.05s;
+}
+.controls button:hover {
+  border-color: var(--line-hi);
+  background: rgba(20, 60, 38, 0.9);
+}
+.controls button:active {
+  transform: translateY(1px);
+}
+.controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wins-pill {
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wins-pill span {
+  margin-left: 4px;
+}
+.btn-mute {
+  min-width: 42px;
+}
+/* Mobile-only fullscreen/landscape toggle; hidden on desktop. */
+.btn-fullscreen {
+  display: none;
+}
+
+/* ---------- Board layout ---------- */
+.board {
+  max-width: 920px;
+  margin: 0 auto 40px;
+  padding: 0 14px;
+  touch-action: none; /* prevent scroll while dragging */
+}
+/* ---------- Responsive layout wrapper ---------- */
+.game-layout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  /* `row-gap` removed: legacy Safari ignores it. Emulated below with a negative
+     top margin cancelling the first row's child margin. */
+  margin-top: calc(-1 * var(--row-gap));
+  margin-bottom: var(--row-gap);
+}
+/* Legacy-safe row-gap polyfill. Works whether or not the browser supports
+   `display: contents`, since margins are honoured by all flex engines. */
+.game-layout > * {
+  margin-top: var(--row-gap);
+}
+.side-panel {
+  display: contents;
+}
+.panel-content {
+  display: flex;
+}
+.panel-content > * + * {
+  margin-left: var(--gap); /* flex `gap` fallback */
+}
+.cell-group {
+  display: flex;
+}
+.cell-group > * + * {
+  margin-left: var(--gap); /* flex `gap` fallback */
+}
+.side-label {
+  display: none;
+}
+/* Desktop: lay the top row out as [dragon panel] [flower] [foundations]. */
+.right-panel .panel-content {
+  order: 8;
+}
+.flower-slot {
+  order: 5;
+}
+
+/* ---------- Slots ---------- */
+.slot {
+  width: var(--card-w);
+  height: var(--card-h);
+  /*
+   * iOS 13 / Safari 13 expands `inset` shorthand but we keep parity with the
+   * original (where this slot is position-relative only). Stay explicit:
+   */
+  position: relative;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.18);
+}
+.slot.empty {
+  background: rgba(0, 0, 0, 0.22);
+}
+.slot.foundation {
+  border-style: solid;
+}
+/* Every foundation card is stacked at the slot origin (only the top card is
+   visible). Rendering ALL cards — not just the top — gives motion-v a live
+   element for every auto-moved card, so a cascade like 2→3→4→5 flies each one
+   in with a layout FLIP instead of a hard cut (the cards mount here with the
+   same layout-id their tableau copy unmounted with). */
+.slot.foundation .card {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.foundation.c-red {
+  box-shadow: inset 0 0 0 2px rgba(192, 57, 43, 0.35);
+}
+.foundation.c-black {
+  box-shadow: inset 0 0 0 2px rgba(220, 220, 220, 0.18);
+}
+.foundation.c-green {
+  box-shadow: inset 0 0 0 2px rgba(30, 132, 73, 0.45);
+}
+
+.slot.flower-slot {
+  border-color: rgba(214, 51, 132, 0.6);
+}
+.slot.flower-slot.empty::before {
+  content: '✿';
+  position: absolute;
+  /* `inset` shorthand → explicit (iOS 13 / Safari 13 parity). */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex; /* `place-items` unreliable on old iOS/Safari → flex */
+  align-items: center;
+  justify-content: center;
+  color: rgba(214, 51, 132, 0.35);
+  font-size: 26px;
+}
+
+.slot.col {
+  width: var(--card-w);
+  min-height: var(--card-h);
+  height: auto;
+  border: none;
+  background: transparent;
+}
+.slot.col.empty::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--card-w);
+  height: var(--card-h);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+.slot.col.empty {
+  background: transparent;
+}
+
+/* Locked dragon cell */
+.slot.locked {
+  border-style: solid;
+}
+.slot.locked.c-red {
+  border-color: var(--red);
+  box-shadow: inset 0 0 12px rgba(192, 57, 43, 0.35);
+}
+.slot.locked.c-black {
+  border-color: #555;
+  box-shadow: inset 0 0 12px rgba(180, 180, 180, 0.25);
+}
+.slot.locked.c-green {
+  border-color: var(--green);
+  box-shadow: inset 0 0 12px rgba(30, 132, 73, 0.45);
+}
+.locked-dragons {
+  position: absolute;
+  /* `inset:0` → explicit (iOS 13 parity). */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex; /* place-items → flex */
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+}
+.locked-dragons.c-red {
+  color: var(--red);
+}
+.locked-dragons.c-black {
+  color: #ccc;
+}
+.locked-dragons.c-green {
+  color: var(--green);
+}
+.locked-dragons .lock {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* ---------- Tableau ---------- */
+.tableau {
+  display: grid;
+  grid-template-columns: repeat(8, var(--card-w));
+  gap: var(--gap);
+  justify-content: space-between;
+  width: 100%;
+  order: 10;
+}
+.col .card:not(:first-child) {
+  margin-top: -108px;
+}
+.col .card {
+  pointer-events: auto;
+}
+
+/* ---------- Cards ---------- */
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: var(--radius);
+  /* Paper-stock gradient HARD-CODED (no var()) — Safari 13 / iOS 13 silently
+     drops a `background-image` whose gradient params reference CSS custom
+     properties; the `background-color` below is the safe flat fallback. */
+  background-color: #efe9d8;
+  background-image: radial-gradient(
+      120% 80% at 12% 8%,
+      rgba(255, 255, 255, 0.6) 0%,
+      rgba(255, 255, 255, 0) 55%
+    ),
+    linear-gradient(135deg, #f8f3e3 0%, #efe9d8 46%, #e2dac2 100%);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -3px 5px rgba(120, 108, 78, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+  /* No `transition: transform` here: motion-v's <motion.div layout> owns the
+   * transform channel for FLIP animations. A CSS transition on transform would
+   * fight motion's WAAPI-driven layout transitions. */
+  font-family: 'DejaVu Sans Mono', 'SFMono-Regular', 'Consolas', 'Menlo', 'Microsoft JhengHei',
+    'PingFang TC', 'Noto Sans CJK TC', monospace;
+}
+/* Corner pips so stacked cards remain readable */
+.corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+.corner.tl {
+  top: 3px;
+  left: 4px;
+}
+.corner.br {
+  bottom: 3px;
+  right: 4px;
+  transform: rotate(180deg);
+}
+
+.rank-num {
+  font-size: max(13px, calc(var(--card-w) * 0.22));
+  font-weight: 700;
+}
+.glyph-small {
+  font-size: max(12px, calc(var(--card-w) * 0.2));
+}
+
+.c-red .corner {
+  color: var(--red);
+}
+.c-green .corner {
+  color: var(--green);
+}
+.c-black .corner {
+  color: #1c1c1c;
+}
+
+.card.dragon .corner {
+  color: var(--dragon);
+}
+.card.dragon.c-red .corner {
+  color: var(--red);
+}
+.card.dragon.c-black .corner {
+  color: #1c1c1c;
+}
+.card.dragon.c-green .corner {
+  color: var(--green);
+}
+
+.card.flower .corner {
+  color: var(--flower);
+}
+
+.card.no-drag {
+  cursor: default;
+}
+
+/* Drag states: the REAL cards follow the pointer directly (no cloned ghost).
+   .is-dragging lifts them above the board and gives them their own compositor
+   layer so per-frame transform updates never repaint the page. */
+.card.is-dragging {
+  z-index: 9000;
+  will-change: transform;
+  cursor: grabbing;
+}
+.shake {
+  animation: shake 0.32s;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+/* Drop highlight */
+.slot.drop-ok {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(216, 177, 90, 0.6);
+}
+
+/* ---------- Dragon collect button ---------- */
+.dragon-btn {
+  width: var(--card-w);
+  height: var(--card-h);
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: rgba(8, 30, 24, 0.7);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  cursor: not-allowed;
+  transition: all 0.15s;
+}
+.dragon-btn .glyph {
+  font-size: 26px;
+  opacity: 0.5;
+}
+.dragon-btn.ready {
+  color: #06140c;
+  border-style: solid;
+  cursor: pointer;
+  animation: pulse 1.4s infinite;
+}
+.dragon-btn.ready[data-color='red'] {
+  background: linear-gradient(160deg, #e74c3c, #a8231a);
+  border-color: #e74c3c;
+  box-shadow: 0 0 18px rgba(231, 76, 60, 0.55);
+}
+.dragon-btn.ready[data-color='black'] {
+  background: linear-gradient(160deg, #7f8c8d, #4a4a4a);
+  border-color: #95a5a6;
+  box-shadow: 0 0 18px rgba(149, 165, 166, 0.55);
+}
+.dragon-btn.ready[data-color='green'] {
+  background: linear-gradient(160deg, #27ae60, #186a36);
+  border-color: #27ae60;
+  box-shadow: 0 0 18px rgba(39, 174, 96, 0.55);
+}
+.dragon-btn.ready .glyph {
+  opacity: 1;
+  color: #06140c;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(18, 200, 184, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(18, 200, 184, 0.85);
+  }
+}
+
+/* ---------- Achievements ---------- */
+.achievements {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+.achv {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 12px 5px 8px;
+  opacity: 0.55;
+  transition: all 0.2s;
+}
+.achv .ribbon {
+  font-size: 15px;
+}
+.achv i {
+  font-style: normal;
+  color: var(--ink-dim);
+}
+.achv.done {
+  opacity: 1;
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+/* ---------- Win overlay ---------- */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0; /* `inset:0` → explicit (iOS 13 parity) */
+  background: rgba(2, 10, 6, 0.78);
+  /* Centre the modal. flex + align/justify `center` is a hard floor on iOS /
+     Safari < 13.1 where `place-items` silently fails (memories /
+     legacy-browser-css.md). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.overlay[hidden] {
+  display: none;
+}
+.overlay-card {
+  background: linear-gradient(160deg, #103023, #0a1c13);
+  border: 1px solid var(--line-hi);
+  border-radius: 14px;
+  padding: 34px 44px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+}
+.overlay-glyph {
+  font-size: 54px;
+  color: var(--gold);
+  text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
+}
+.overlay-card h2 {
+  margin: 8px 0 4px;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+.overlay-card p {
+  margin: 0 0 18px;
+  color: var(--ink-dim);
+}
+.overlay-card button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--line-hi);
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  cursor: pointer;
+}
+.overlay-card button:hover {
+  filter: brightness(1.1);
+}
+
+/* New-game confirmation dialog: two buttons side by side. */
+.newgame-card {
+  padding: 30px 38px;
+}
+.newgame-card .overlay-glyph {
+  font-size: 44px;
+}
+.newgame-card h2 {
+  margin-top: 6px;
+  font-size: 20px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px; /* `gap` fallback for old Safari: margin on buttons below */
+}
+.dialog-actions button {
+  min-width: 88px;
+}
+.dialog-actions .btn-ghost {
+  background: transparent;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+}
+.dialog-actions .btn-ghost:hover {
+  color: var(--ink);
+  filter: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+.dialog-actions .btn-primary {
+  background: var(--gold);
+  color: #1a1408;
+  font-weight: 700;
+}
+
+/* ---------- Toasts ---------- */
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  z-index: 60;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(8, 30, 24, 0.96);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- Responsive ---------- */
+/* Tablet portrait: smaller card so 8 cols + gaps fit one screen. */
+@media (orientation: portrait) and (min-width: 561px) and (max-width: 900px) {
+  :root {
+    --card-w: 76px;
+    --card-h: 108px;
+    --gap: 8px;
+  }
+  .col .card:not(:first-child) {
+    margin-top: -80px;
+  }
+}
+
+@media (orientation: landscape) and (max-width: 896px),
+  (max-width: 560px) {
+  :root {
+    --card-w: 52px;
+    --card-h: 74px;
+    --gap: 6px;
+  }
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  .game-layout {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    row-gap: 0;
+    /* Reset desktop negative-margin polyfill (would pull the strip off-screen). */
+    margin-top: 0;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .game-layout > * + * {
+    margin-left: 8px;
+  }
+  .game-layout > * {
+    margin-top: 0;
+  }
+  .toolbar-panel.side-panel {
+    margin-bottom: 0;
+  }
+
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 56px;
+    flex-shrink: 0;
+    padding: 4px 0;
+    align-items: center;
+  }
+
+  .toolbar-panel.side-panel {
+    order: 0;
+    width: 44px;
+    flex-direction: column;
+    padding: 6px 4px;
+    border-bottom: none;
+    border-right: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .toolbar-panel.side-panel > * + * {
+    margin-top: 8px;
+  }
+  .toolbar-panel.side-panel .brand h1 {
+    display: none;
+  }
+  .toolbar-panel.side-panel .controls {
+    flex-direction: column;
+  }
+  .toolbar-panel.side-panel .controls > * + * {
+    margin-top: 6px;
+  }
+  .toolbar-panel.side-panel .controls button,
+  .toolbar-panel.side-panel .wins-pill {
+    font-size: 11px;
+    padding: 5px 4px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    min-width: 0;
+    width: 100%;
+  }
+  .toolbar-panel.side-panel .wins-pill {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
+
+  .left-panel {
+    order: 1;
+  }
+  .tableau {
+    order: 2;
+    flex: 1;
+    width: auto;
+    display: grid;
+    grid-template-columns: repeat(8, var(--card-w));
+    gap: 6px;
+    justify-content: center;
+  }
+  .right-panel {
+    order: 3;
+  }
+  /* Reset desktop "flower in middle" ordering: right panel is a vertical strip,
+     so fall back to source order (foundations top, flower beneath). */
+  .right-panel .panel-content {
+    order: 0;
+  }
+  .flower-slot {
+    order: 0;
+  }
+
+  .panel-content {
+    flex-direction: column;
+    align-items: center;
+  }
+  .panel-content > * + * {
+    margin-top: 6px;
+  }
+
+  .panel-content .cell-group {
+    flex-direction: column;
+    align-items: center;
+  }
+  .panel-content .cell-group > * + * {
+    margin-top: 6px;
+  }
+
+  .dragon-btn .lbl {
+    display: none;
+  }
+
+  .side-label {
+    position: absolute;
+    top: -16px;
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: block;
+  }
+  .lbl-left {
+    left: 44px;
+  }
+  .lbl-right {
+    right: 0;
+  }
+
+  .card.num .rank,
+  .card.dragon .glyph,
+  .card.flower .glyph {
+    font-size: 20px;
+  }
+  .col .card:not(:first-child) {
+    margin-top: -54px;
+  }
+  .brand h1 {
+    font-size: 13px;
+  }
+
+  /* Show fullscreen/landscape toggle only on mobile layouts. */
+  .btn-fullscreen {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 6px;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+  }
+  .btn-fullscreen.fs-active {
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+}

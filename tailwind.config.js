@@ -13,6 +13,8 @@ export default {
   content: [
     './games/othello/index.html',
     './games/othello/src/**/*.{js,ts,jsx,tsx,vue}',
+    './games/solitaire/index.html',
+    './games/solitaire/src/**/*.{js,ts,jsx,tsx,vue}',
   ],
   theme: {
     extend: {

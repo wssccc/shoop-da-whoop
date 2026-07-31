@@ -39,11 +39,13 @@ export default defineConfig({
     vue(),
   ],
 
-  // `@` alias mirrors the Othello tsconfig `paths` (`@/* -> ./src/*`) so the
-  // TSX sources keep their `@/components/...` imports under the MPA build.
+  // `@othello` mirrors the Othello tsconfig `paths` (`@othello/* -> ./src/*`)
+  // so the TSX sources keep their `@othello/components/...` imports under the
+  // MPA build. `@solitaire` does the same for the Solitaire (Vue 3) entry.
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'games/othello/src'),
+      '@othello': resolve(__dirname, 'games/othello/src'),
+      '@solitaire': resolve(__dirname, 'games/solitaire/src'),
     },
   },
 

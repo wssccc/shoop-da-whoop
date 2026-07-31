@@ -10,10 +10,9 @@
 
     "baseUrl": ".",
     "paths": {
-      "@othello/*": [
-        "./src/*"
-      ]
+      "@solitaire/*": ["./src/*"]
     },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
