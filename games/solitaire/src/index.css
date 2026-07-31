@@ -133,6 +133,10 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* The game is a fixed, non-scrolling layout (drag already uses
+     touch-action:none); never show scrollbars even if the viewport is smaller
+     than the board — content that doesn't fit is simply clipped. */
+  overflow: hidden;
   background: radial-gradient(
     140% 120% at 50% -10%,
     var(--felt) 0%,

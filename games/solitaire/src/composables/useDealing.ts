@@ -33,6 +33,21 @@ const FLY_MS = 260;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 /** Gap between consecutive dealt cards (~40 cards ≈ 1.8s total). */
 const STAGGER_MS = 45;
+/**
+ * Auto-settle (auto-move) flight timing — deliberately SLOWER than the deal
+ * fly-in: auto-moves read as "cards flying home" and share the same
+ * deliberate one-at-a-time cadence as the dragon-collect cascade
+ * (useDragonCollect.ts), so every auto-collect scenario feels consistent.
+ */
+const AUTO_FLY_MS = 320;
+const AUTO_STAGGER_MS = 200;
+/**
+ * Z-index base for auto-moved cards WAITING to fly. While they wait, the
+ * moved cards live inside the foundation slot (an absolute stack) and are
+ * translate()d back to their tableau spot — DOM order there is REVERSED vs.
+ * the column, so we re-order by take-off sequence (see useDragonCollect.ts).
+ */
+const AUTO_HOLD_Z_BASE = 5000;
 const COL_COUNT = 8;
 const ROWS = 5;
 const COLORS = ['red', 'black', 'green'] as const;
@@ -172,8 +187,10 @@ export function useDealing(game: SolitaireGameApi): void {
     if (moved.length === 0) return;
 
     // Snap each REAL card back to its dealt spot, then fly it to its slot.
+    // No z-index here — a waiting card keeps its natural stacking until it is
+    // this card's turn to fly.
     const flying: HTMLElement[] = [];
-    moved.forEach(({ id, target }, i) => {
+    moved.forEach(({ id, target }) => {
       if (!target) return;
       const real = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
       const src = dealRect.get(id);
@@ -184,21 +201,38 @@ export function useDealing(game: SolitaireGameApi): void {
       // Card is at t (target). Snap it to src (dealt spot), then fly back.
       real.style.transition = 'none';
       real.style.transform = `translate(${-dx}px, ${-dy}px)`;
-      real.style.zIndex = String(6000 + i);
       flying.push(real);
     });
     void document.body.offsetWidth; // commit the snap as the transition start
 
-    flying.forEach((el) => {
-      el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
-      el.style.transform = '';
-      // stay elevated until the flight settles, then restore stacking
-      setTimeout(() => {
-        el.style.zIndex = '';
-      }, FLY_MS);
+    // While they wait, the snapped-back cards sit in the foundation slot's
+    // absolute stack where DOM order puts the LAST mover on top — the
+    // opposite of the column's overlap. Re-z by take-off order so the first
+    // to fly covers the rest, like the original column (see useDragonCollect).
+    flying.forEach((el, i) => {
+      el.style.zIndex = String(AUTO_HOLD_Z_BASE + (flying.length - 1 - i));
     });
 
-    await new Promise((r) => setTimeout(r, FLY_MS + 60));
+    // Fly them home ONE AT A TIME — `moved` is in engine auto-move order
+    // (lowest rank / outermost first), the same peeling cadence as the
+    // dragon-collect cascade. The z-index lift happens at take-off only and
+    // is cleared on landing.
+    flying.forEach((el, i) => {
+      const delay = i * AUTO_STAGGER_MS;
+      const takeOff = () => {
+        el.style.zIndex = String(6000 + i);
+        el.style.transition = `transform ${AUTO_FLY_MS}ms ${EASE}`;
+        el.style.transform = '';
+      };
+      if (delay === 0) takeOff();
+      else setTimeout(takeOff, delay);
+      setTimeout(() => {
+        el.style.zIndex = '';
+      }, delay + AUTO_FLY_MS);
+    });
+
+    const maxDelay = (flying.length - 1) * AUTO_STAGGER_MS;
+    await new Promise((r) => setTimeout(r, AUTO_FLY_MS + maxDelay + 60));
     for (const el of flying) {
       el.style.transition = '';
       el.style.transform = '';

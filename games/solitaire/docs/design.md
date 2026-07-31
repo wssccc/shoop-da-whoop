@@ -450,6 +450,8 @@ isSafeNumber(state, card):
 4. 放入目标空闲格并锁定
 ```
 
+**收集动画（`useDragonCollect.ts`）**：真实牌被引擎 commit 前先飞向锁定格，节奏与自动收牌一致（320ms 飞行 / 200ms 起飞间隔）。起飞顺序按"剥洋葱"：**列顶（最外层）先飞**——以 `colIndex` 降序为主键、同层按列号升序（列外/空闲格的龙最后收，与引擎 `collectDragons()` 的弹出顺序一致）。落地后 commit，龙堆在锁定格无缝出现。
+
 ### 5.5 胜利判定 (`isWin`)
 
 ```text
@@ -489,6 +491,12 @@ all foundations[color].length == 9  // 所有终局槽满
 - **牌面**：圆角卡片，数字牌显示数字，龙牌显示「龙」字，花牌显示 ✿
 - **响应式**：CSS Grid + Flexbox，适配桌面和移动端
 
+**胜利弹窗动画**（`.overlay-card.win-card`，纯 keyframes，无 `@property` / 渐变 `var()`，iOS 13 安全）：
+
+- ☯ 太极符号 72px，`win-breathe` **2.8s text-shadow 呼吸**（`0.35/12px` ↔ `0.95/26px` + 外层 64px 微光）——呼吸光在符号上，符号本身**不旋转**
+- 卡片保留金色描边 + 静态投影；入场由 motion-v spring 弹入（`scale 0.85→1`）
+- `prefers-reduced-motion: reduce` 时停动画，保留静态 24px 金晕（无障碍）
+
 ### 6.4 z-index 分层设计
 
 所有层级分两**带**：**牌动画带**（5000~9000，全部由 composables 以 inline style 动态设置）与**固定浮层带**（100~110，静态 CSS）。两带之间刻意留出 4900 的间隙，保证**浮层永远盖住飞行中的牌**。
@@ -500,8 +508,8 @@ all foundations[color].length == 9  // 所有终局槽满
 | `105` | `.overlay.newgame-overlay` 新局确认（防御：须在胜利之上） | 静态 | `index.css` |
 | `110` | `.toasts` 成就提示（`pointer-events: none`） | 静态 | `index.css` |
 | `5000 + i` | 发牌动画：snap 到 stock 等待的牌（后发的叠上层） | 动态 | `useDealing.ts` |
-| `5000 + (len-1-i)` | 收牌动画：snap 回列原位等待的牌（**先飞的叠上层**，还原列叠放） | 动态 | `useDragonCollect.ts`（`HOLD_Z_BASE`） |
-| `6000 + i` | 自动归位飞行（发牌 settleAutoMoves / 收牌后数字牌收向终局） | 动态 | `useDealing.ts` / `useDragonCollect.ts` |
+| `5000 + (len-1-i)` | 自动收牌等待期（snap 回列原位等待的牌，**先飞的叠上层**，还原列叠放） | 动态 | `useDragonCollect.ts` / `useDealing.ts` / `animateAutoMoves.ts`（`AUTO_HOLD_Z_BASE`） |
+| `6000 + i` | 自动收牌飞行（龙牌级联 / 发牌 settleAutoMoves / 移动牌后的级联收牌） | 动态 | `useDragonCollect.ts` / `useDealing.ts` / `animateAutoMoves.ts` |
 | `7000 + i` | 收牌动画：龙牌飞向锁定格 | 动态 | `useDragonCollect.ts` |
 | `9000` | 拖拽中的牌（`.is-dragging`）/ 发牌飞行中的牌 | 动态 | `index.css` / `useDealing.ts` |
 
@@ -521,6 +529,18 @@ all foundations[color].length == 9  // 所有终局槽满
 - **收牌动画途中触发胜利**（最后一张数字牌自动收向终局即是胜利）：此时 `collecting === true` → 存入 `deferredWin`，**不立即置位**；`useDragonCollect` 在飞牌动画完全结束的 `finally` 中调用 `flushDeferredWin()` 才释放弹窗——保证"恭喜通关"不会在飞行中的牌上方弹出
 
 相关状态：`deferredWin`（`useSolitaireGame.ts` 模块级私有标志），`undo()` / `newGame()` 都会清除它（撤销后棋盘不再是胜利状态、新局自然无胜利）。胜利音效不延迟（`onSound('win')` 随引擎立即播放）。
+
+#### 自动收牌动画的节奏（所有场景统一）
+
+所有"牌自动飞向终局/花槽"的动画共用同一套慢节奏——**320ms 飞行 + 200ms 起飞间隔，一次一张**：
+
+| 触发场景 | 实现位置 | 说明 |
+| --- | --- | --- |
+| 收龙级联（🐉 收按钮） | `useDragonCollect.ts`（`FLY_MS` / `STAGGER_MS`） | 龙牌 7000+i，数字牌 6000+i |
+| 发牌后的自动归位 | `useDealing.ts` `settleAutoMoves`（`AUTO_FLY_MS` / `AUTO_STAGGER_MS`） | 与发牌动画本体（45ms 快节奏）区分 |
+| 移动一张牌后的级联收牌 | `useSolitaireGame.ts` `moveCard` + `animateAutoMoves.ts`（共享模块） | 玩家拖牌 commit 后引擎自动收的牌 |
+
+**移动后级联收牌的实现**：`moveCard` 在 `engine.move` 前快照全盘 rect 与终局/花槽长度；成功后 diff 出被自动收的牌，将它们的 id 写入 `autoMovingIds`（App.vue 对这几张牌禁用 motion-v layout，避免与手动飞行动画打架），再 fire-and-forget 调用共享的 `flyAutoMovedCards()`（snap 回原位 → 反序 z → 逐张飞 → 落地清除）。玩家移动的那张牌不在 `autoMovingIds` 中，保留 motion-v 的正常 FLIP。
 
 ---
 

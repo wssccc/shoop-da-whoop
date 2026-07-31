@@ -30,10 +30,10 @@ import { nextTick } from 'vue';
 import type { SolitaireGameApi } from './useSolitaireGame';
 
 /** Flight timing — matched to the CSS transition used below. */
-const FLY_MS = 260;
+const FLY_MS = 320;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 /** Per-card gap between flights (global: one card takes off at a time). */
-const STAGGER_MS = 160;
+const STAGGER_MS = 200;
 /**
  * Z-index base for cards WAITING to fly during the auto-move cascade. While
  * they wait, the moved cards live inside the foundation slot (an absolute

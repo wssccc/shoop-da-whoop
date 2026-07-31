@@ -6,6 +6,7 @@
 // mutation happens inside the engine and we re-publish a new state object each
 // time (so shallowRef is correct — see memories/othello-vue-migration.md).
 
+import { COLORS } from '@solitaire/game/constants';
 import { SolitaireEngine } from '@solitaire/game/engine';
 import * as Rules from '@solitaire/game/rules';
 import { fromLayout } from '@solitaire/game/state';
@@ -17,6 +18,11 @@ import type {
 } from '@solitaire/game/types';
 import { Storage } from '@solitaire/storage';
 import { computed, ref, shallowRef } from 'vue';
+import {
+    flyAutoMovedCards,
+    snapshotCardRects,
+    type AutoMoveTarget,
+} from './animateAutoMoves';
 import { Audio, getMuted as audioGetMuted, setMuted as audioSetMuted } from './useAudio';
 
 export function useSolitaireGame() {
@@ -30,6 +36,13 @@ export function useSolitaireGame() {
   const justDealt = ref(false);
   /** Set true while the dragon-collect flight runs (drag & layout disabled). */
   const collecting = ref(false);
+  /**
+   * Card ids currently flying home after a USER MOVE triggered the engine's
+   * auto-move cascade (flower + safe foundation runs). While a card is in
+   * here it renders with noLayout (see App.vue) so motion-v's layout FLIP
+   * doesn't fight our hand-rolled one-at-a-time flight.
+   */
+  const autoMovingIds = ref<string[]>([]);
   /**
    * A win detected WHILE the dragon-collect flight is still running. The
    * overlay must wait until every card has landed — otherwise the "恭喜通关"
@@ -112,8 +125,49 @@ export function useSolitaireGame() {
   }
 
   function moveCard(run: Card[] | null, dest: DestDescriptor): MoveResult {
+    // Snapshot BEFORE the move: every card's rect + foundation/flower state,
+    // so cards the engine auto-moves can be flown home one at a time.
+    const srcRects = snapshotCardRects();
+    const before = engine.getState();
+    const beforeLen: Record<CardColor, number> = {
+      red: before.foundations.red.length,
+      black: before.foundations.black.length,
+      green: before.foundations.green.length,
+    };
+    const flowerBefore = before.flowerSlot !== null;
+
     const result = engine.move(run, dest);
-    if (result.ok) afterChange();
+    if (!result.ok) return result;
+    afterChange();
+
+    // Diff old vs new to find the auto-moved cards (flower + safe foundation
+    // runs) and fly them home one at a time instead of motion-v's instant
+    // layout FLIP.
+    const st = engine.getState();
+    const moved: AutoMoveTarget[] = [];
+    for (const c of COLORS) {
+      const f = st.foundations[c];
+      for (let i = beforeLen[c]; i < f.length; i++) {
+        moved.push({
+          id: f[i].id,
+          target: document.querySelector(`.slot.foundation.c-${c}`),
+        });
+      }
+    }
+    if (!flowerBefore && st.flowerSlot) {
+      moved.push({
+        id: st.flowerSlot.id,
+        target: document.querySelector('.slot.flower-slot'),
+      });
+    }
+    if (moved.length > 0) {
+      // Disable motion-v layout on exactly these cards (next render) so we
+      // own their transform channel; fly them home, then re-enable.
+      autoMovingIds.value = moved.map((m) => m.id);
+      void flyAutoMovedCards(moved, srcRects).finally(() => {
+        autoMovingIds.value = [];
+      });
+    }
     return result;
   }
 
@@ -187,6 +241,7 @@ export function useSolitaireGame() {
     won,
     justDealt,
     collecting,
+    autoMovingIds,
     canUndo,
     dragonReadyColor,
     moveCard,

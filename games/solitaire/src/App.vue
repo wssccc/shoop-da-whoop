@@ -150,7 +150,7 @@ const onCollectDragons = useDragonCollect(game);
                 v-if="isCard(state.freeCells[i])"
                 :card="state.freeCells[i] as CardModel"
                 :draggable="true"
-                :no-layout="game.justDealt.value || game.collecting.value"
+                :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes((state.freeCells[i] as CardModel).id)"
               />
               <div
                 v-else-if="isDragonPile(state.freeCells[i])"
@@ -191,7 +191,7 @@ const onCollectDragons = useDragonCollect(game);
                 :key="card.id"
                 :card="card"
                 :draggable="false"
-                :no-layout="game.justDealt.value || game.collecting.value"
+                :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(card.id)"
               />
             </div>
           </div>
@@ -205,7 +205,7 @@ const onCollectDragons = useDragonCollect(game);
             v-if="state.flowerSlot"
             :card="state.flowerSlot"
             :draggable="false"
-            :no-layout="game.justDealt.value || game.collecting.value"
+            :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(state.flowerSlot.id)"
           />
         </div>
       </aside>
@@ -224,7 +224,7 @@ const onCollectDragons = useDragonCollect(game);
             :key="card.id"
             :card="card"
             :draggable="true"
-            :no-layout="game.justDealt.value || game.collecting.value"
+            :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(card.id)"
           />
         </div>
       </section>
