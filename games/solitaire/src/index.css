@@ -658,8 +658,9 @@ body {
   /* FLYOVER LAYER — every fixed full-screen float (overlay / toasts) lives
      ABOVE the card animation bands (max 9000 = drag / deal flight). Without
      this the last auto-moved card (e.g. n-black-9 at z 6008) would fly OVER
-     the win overlay the moment it appears — the final move often IS the win. */
-  z-index: 100;
+     the win overlay the moment it appears — the final move often IS the win.
+     NOTE: 10000 > 9000 — the value MUST stay above the highest card band. */
+  z-index: 10000;
 }
 .overlay[hidden] {
   display: none;
@@ -741,7 +742,7 @@ body {
    already skips the confirm when a win is showing; this guards any future
    path.) */
 .overlay.newgame-overlay {
-  z-index: 105;
+  z-index: 10100;
 }
 .newgame-card .overlay-glyph {
   font-size: 44px;
@@ -786,7 +787,7 @@ body {
   align-items: center;
   /* Above every card animation band and both overlays; pointer-events:none
      so it never blocks drag or dialog clicks. */
-  z-index: 110;
+  z-index: 10200;
   pointer-events: none;
 }
 .toast {

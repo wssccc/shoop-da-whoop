@@ -499,14 +499,14 @@ all foundations[color].length == 9  // 所有终局槽满
 
 ### 6.4 z-index 分层设计
 
-所有层级分两**带**：**牌动画带**（5000~9000，全部由 composables 以 inline style 动态设置）与**固定浮层带**（100~110，静态 CSS）。两带之间刻意留出 4900 的间隙，保证**浮层永远盖住飞行中的牌**。
+所有层级分两**带**：**牌动画带**（5000~9000，全部由 composables 以 inline style 动态设置）与**固定浮层带**（10000~10200，静态 CSS）。浮层带从 10000 起，**必须**高于牌动画带最高值 9000——胜利弹窗可能在收牌动画进行中就出现（最后一张自动收 = 胜利），低于 9000 时最后一张牌会飘在"恭喜通关"之上。
 
 | z-index | 用途 | 归属 | 设置位置 |
 | --- | --- | --- | --- |
 | `auto` | 棋盘 / 牌面的自然层叠（列内按 DOM 序） | 静态 | CSS 默认 |
-| `100` | `.overlay` 全屏遮罩（新局确认 / 胜利） | 静态 | `index.css` |
-| `105` | `.overlay.newgame-overlay` 新局确认（防御：须在胜利之上） | 静态 | `index.css` |
-| `110` | `.toasts` 成就提示（`pointer-events: none`） | 静态 | `index.css` |
+| `10000` | `.overlay` 全屏遮罩（新局确认 / 胜利） | 静态 | `index.css` |
+| `10100` | `.overlay.newgame-overlay` 新局确认（防御：须在胜利之上） | 静态 | `index.css` |
+| `10200` | `.toasts` 成就提示（`pointer-events: none`） | 静态 | `index.css` |
 | `5000 + i` | 发牌动画：snap 到 stock 等待的牌（后发的叠上层） | 动态 | `useDealing.ts` |
 | `5000 + (len-1-i)` | 自动收牌等待期（snap 回列原位等待的牌，**先飞的叠上层**，还原列叠放） | 动态 | `useDragonCollect.ts` / `useDealing.ts` / `animateAutoMoves.ts`（`AUTO_HOLD_Z_BASE`） |
 | `6000 + i` | 自动收牌飞行（龙牌级联 / 发牌 settleAutoMoves / 移动牌后的级联收牌） | 动态 | `useDragonCollect.ts` / `useDealing.ts` / `animateAutoMoves.ts` |
@@ -518,7 +518,7 @@ all foundations[color].length == 9  // 所有终局槽满
 1. **只在飞行瞬间抬升、落地清除**：z-index 在 `takeOff()`/`fly()` 内设置，落地用 `setTimeout` 清回 `''`（auto）。等待起飞的牌保持自然层叠，否则会干扰列内叠放（曾出现"等待牌一次性抬升 → 列内层级反转"的 bug）。
 2. **等待期按起飞顺序反序排序**：自动收牌时牌被 Vue 重排进 foundation（absolute 堆叠，DOM 序 9 最后 = 最上），snap 回列位后必须反序设 z-index（先飞的在上层）才能还原列的"8 盖住 9"自然叠放——否则会出现"9 突然盖住 8 且透出半透明渐变"的视觉错乱。
 3. **飞行带相对顺序**：龙牌（7000）> 自动归位（6000）> 等待/驻留（5000），保证相邻两张短暂同飞时后起飞的盖住先起飞的（追尾效果合理）。
-4. **浮层带永远最高**：胜利 overlay 可能在收牌动画进行中就出现（最后一张自动收 = 胜利），若 overlay 低于飞行带，最后一张牌会飘在"恭喜通关"之上。
+4. **浮层带永远最高（数值 10000+）**：胜利 overlay 可能在收牌动画进行中就出现（最后一张自动收 = 胜利），浮层 z-index 必须大于牌动画带最高值 9000——曾因误设 100 导致最后一张牌飘在"恭喜通关"之上。
 5. **弹窗互不叠加**：胜利 overlay 与确认弹窗同为全屏层，靠 DOM 序 + `newgame-overlay` 更高的 z 保证确认弹窗按钮可点（另有 `askNewGame()` 胜利时跳过确认的行为层兜底）。
 
 #### 胜利弹窗的时机（动画完成后显示）
