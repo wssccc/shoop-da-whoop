@@ -489,6 +489,39 @@ all foundations[color].length == 9  // 所有终局槽满
 - **牌面**：圆角卡片，数字牌显示数字，龙牌显示「龙」字，花牌显示 ✿
 - **响应式**：CSS Grid + Flexbox，适配桌面和移动端
 
+### 6.4 z-index 分层设计
+
+所有层级分两**带**：**牌动画带**（5000~9000，全部由 composables 以 inline style 动态设置）与**固定浮层带**（100~110，静态 CSS）。两带之间刻意留出 4900 的间隙，保证**浮层永远盖住飞行中的牌**。
+
+| z-index | 用途 | 归属 | 设置位置 |
+| --- | --- | --- | --- |
+| `auto` | 棋盘 / 牌面的自然层叠（列内按 DOM 序） | 静态 | CSS 默认 |
+| `100` | `.overlay` 全屏遮罩（新局确认 / 胜利） | 静态 | `index.css` |
+| `105` | `.overlay.newgame-overlay` 新局确认（防御：须在胜利之上） | 静态 | `index.css` |
+| `110` | `.toasts` 成就提示（`pointer-events: none`） | 静态 | `index.css` |
+| `5000 + i` | 发牌动画：snap 到 stock 等待的牌（后发的叠上层） | 动态 | `useDealing.ts` |
+| `5000 + (len-1-i)` | 收牌动画：snap 回列原位等待的牌（**先飞的叠上层**，还原列叠放） | 动态 | `useDragonCollect.ts`（`HOLD_Z_BASE`） |
+| `6000 + i` | 自动归位飞行（发牌 settleAutoMoves / 收牌后数字牌收向终局） | 动态 | `useDealing.ts` / `useDragonCollect.ts` |
+| `7000 + i` | 收牌动画：龙牌飞向锁定格 | 动态 | `useDragonCollect.ts` |
+| `9000` | 拖拽中的牌（`.is-dragging`）/ 发牌飞行中的牌 | 动态 | `index.css` / `useDealing.ts` |
+
+#### 核心原则
+
+1. **只在飞行瞬间抬升、落地清除**：z-index 在 `takeOff()`/`fly()` 内设置，落地用 `setTimeout` 清回 `''`（auto）。等待起飞的牌保持自然层叠，否则会干扰列内叠放（曾出现"等待牌一次性抬升 → 列内层级反转"的 bug）。
+2. **等待期按起飞顺序反序排序**：自动收牌时牌被 Vue 重排进 foundation（absolute 堆叠，DOM 序 9 最后 = 最上），snap 回列位后必须反序设 z-index（先飞的在上层）才能还原列的"8 盖住 9"自然叠放——否则会出现"9 突然盖住 8 且透出半透明渐变"的视觉错乱。
+3. **飞行带相对顺序**：龙牌（7000）> 自动归位（6000）> 等待/驻留（5000），保证相邻两张短暂同飞时后起飞的盖住先起飞的（追尾效果合理）。
+4. **浮层带永远最高**：胜利 overlay 可能在收牌动画进行中就出现（最后一张自动收 = 胜利），若 overlay 低于飞行带，最后一张牌会飘在"恭喜通关"之上。
+5. **弹窗互不叠加**：胜利 overlay 与确认弹窗同为全屏层，靠 DOM 序 + `newgame-overlay` 更高的 z 保证确认弹窗按钮可点（另有 `askNewGame()` 胜利时跳过确认的行为层兜底）。
+
+#### 胜利弹窗的时机（动画完成后显示）
+
+引擎 `onWin` 回调会**先记胜局数**（`wins` +1 并持久化），但 `won`（弹窗开关）的置位分两种情况：
+
+- **普通移动触发胜利**（最后一张牌手动放上终局）：`collecting === false` → `won` 立即置位，弹窗马上出现
+- **收牌动画途中触发胜利**（最后一张数字牌自动收向终局即是胜利）：此时 `collecting === true` → 存入 `deferredWin`，**不立即置位**；`useDragonCollect` 在飞牌动画完全结束的 `finally` 中调用 `flushDeferredWin()` 才释放弹窗——保证"恭喜通关"不会在飞行中的牌上方弹出
+
+相关状态：`deferredWin`（`useSolitaireGame.ts` 模块级私有标志），`undo()` / `newGame()` 都会清除它（撤销后棋盘不再是胜利状态、新局自然无胜利）。胜利音效不延迟（`onSound('win')` 随引擎立即播放）。
+
 ---
 
 ## 7. 音效系统

@@ -9,8 +9,10 @@
 //   Dragons (fly FIRST, then commit):
 //     1. Snapshot each dragon's rect + column info.
 //     2. Reset them to their natural position (transition start), lift z-index.
-//     3. Fly each to the locked cell, staggered per source column (outermost
-//        first). Destinations measured once — slots are static mid-flight.
+//     3. Fly them to the locked cell ONE AT A TIME, outermost card first
+//        (layer by layer, like peeling an onion — each column's top card
+//        leaves before the one beneath it). Destinations measured once —
+//        slots are static mid-flight.
 //     4. Once they land, commit game.collectDragons(): Vue unmounts the
 //        dragons (already at the locked cell) and the locked pile appears in
 //        their place — seamless. On failure, ease them back to origin.
@@ -30,8 +32,18 @@ import type { SolitaireGameApi } from './useSolitaireGame';
 /** Flight timing — matched to the CSS transition used below. */
 const FLY_MS = 260;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
-/** Per-card gap between flights within the same column. */
-const STAGGER_MS = 90;
+/** Per-card gap between flights (global: one card takes off at a time). */
+const STAGGER_MS = 160;
+/**
+ * Z-index base for cards WAITING to fly during the auto-move cascade. While
+ * they wait, the moved cards live inside the foundation slot (an absolute
+ * stack) and are only translate()d back to their tableau spot — so inside
+ * that stacking context the DOM order is REVERSED vs. the column (the card
+ * that flies last, e.g. 9, is last in DOM = on top). We re-order them by
+ * take-off sequence so the first to fly sits on top, restoring the column's
+ * natural overlap. Take-off lifts them to 6000+i, well above this band.
+ */
+const HOLD_Z_BASE = 5000;
 const COLORS = ['red', 'black', 'green'] as const;
 type Color = (typeof COLORS)[number];
 
@@ -52,24 +64,30 @@ function colInfo(el: HTMLElement): { colSlot: string | null; colIndex: number } 
   };
 }
 
-/** Sort a list of snaps so the OUTERMOST card (top of column) flies first. */
+/** Column number of a snap's slot, for tie-breaking the collect order. */
+function colNumber(slot: string | null): number {
+  if (!slot) return -1;
+  const m = /^col-(\d+)$/.exec(slot);
+  return m ? Number(m[1]) : -1;
+}
+
+/**
+ * Global flight order: OUTERMOST card first, one at a time.
+ *
+ * Cards are ranked by exposure — `colIndex` grows towards the top of a
+ * column, so a bigger index is more exposed (outermost). Ordering by it
+ * groups cards into "layers" (every column's top card, then the card beneath
+ * each, ...), like peeling an onion. Within a layer, columns fly left to
+ * right. Cards outside any column (free cells) rank last, matching the
+ * engine's collectDragons() pop order (tableau first, free cells after).
+ */
 function staggerDelays(items: Snap[]): Map<Snap, number> {
-  const byCol = new Map<string, Snap[]>();
-  for (const s of items) {
-    const key = s.colSlot ?? '__nocol__';
-    const list = byCol.get(key);
-    if (list) list.push(s);
-    else byCol.set(key, [s]);
-  }
+  const ordered = [...items].sort((a, b) => {
+    if (b.colIndex !== a.colIndex) return b.colIndex - a.colIndex;
+    return colNumber(a.colSlot) - colNumber(b.colSlot);
+  });
   const delayOf = new Map<Snap, number>();
-  for (const [key, list] of byCol) {
-    if (key === '__nocol__') {
-      for (const s of list) delayOf.set(s, 0);
-      continue;
-    }
-    list.sort((a, b) => b.colIndex - a.colIndex); // top/outermost first
-    list.forEach((s, i) => delayOf.set(s, i * STAGGER_MS));
-  }
+  ordered.forEach((s, i) => delayOf.set(s, i * STAGGER_MS));
   return delayOf;
 }
 
@@ -120,31 +138,37 @@ export function useDragonCollect(game: SolitaireGameApi): () => void {
 
     game.collecting.value = true;
     try {
-      // 4. Reset each dragon to its natural position (the transition START),
-      //    lift it above the board, and commit the start state.
-      dragonEls.forEach((s, i) => {
+      // 4. Reset each dragon to its natural position (the transition START)
+      //    and commit the start state. z-index is NOT touched here — only the
+      //    card actually taking off is lifted (step 5), so dragons still
+      //    waiting keep their natural stacking until their turn.
+      dragonEls.forEach((s) => {
         s.el.style.transition = 'none';
         s.el.style.transform = '';
-        s.el.style.zIndex = String(7000 + i);
       });
       void document.body.offsetWidth;
 
-      // 5. Fly each dragon to the locked cell, staggered per column.
+      // 5. Fly each dragon to the locked cell, one at a time. The z-index lift
+      //    happens AT TAKE-OFF only, cleared on landing.
       const delayOf = staggerDelays(dragonEls);
       let maxDelay = 0;
       for (const d of delayOf.values()) maxDelay = Math.max(maxDelay, d);
-      const fly = (s: Snap) => {
+      const fly = (s: Snap, i: number) => {
         const dx = tX - (s.rect.left + s.rect.width / 2);
         const dy = tY - (s.rect.top + s.rect.height / 2);
+        s.el.style.zIndex = String(7000 + i);
         s.el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
         s.el.style.transform = `translate(${dx}px, ${dy}px)`;
+        setTimeout(() => {
+          s.el.style.zIndex = '';
+        }, FLY_MS);
       };
       requestAnimationFrame(() => {
-        for (const s of dragonEls) {
+        dragonEls.forEach((s, i) => {
           const delay = delayOf.get(s) ?? 0;
-          if (delay === 0) fly(s);
-          else setTimeout(() => fly(s), delay);
-        }
+          if (delay === 0) fly(s, i);
+          else setTimeout(() => fly(s, i), delay);
+        });
       });
 
       // 6. Wait for the last dragon to land, then commit. On success Vue
@@ -182,9 +206,11 @@ export function useDragonCollect(game: SolitaireGameApi): () => void {
       }
 
       if (moved.length > 0) {
-        // Snap each card back to its dealt spot (transition start).
+        // Snap each card back to its dealt spot (transition start). No z-index
+        // here — a waiting card keeps its natural stacking inside the column
+        // until it is this card's turn to fly.
         const flying: HTMLElement[] = [];
-        moved.forEach(({ id, target }, i) => {
+        moved.forEach(({ id, target }) => {
           if (!target) return;
           const s = snap.get(id);
           const real = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
@@ -194,22 +220,39 @@ export function useDragonCollect(game: SolitaireGameApi): () => void {
           const dy = s.rect.top + s.rect.height / 2 - (t.top + t.height / 2);
           real.style.transition = 'none';
           real.style.transform = `translate(${dx}px, ${dy}px)`;
-          real.style.zIndex = String(6000 + i);
           flying.push(real);
         });
         void document.body.offsetWidth; // commit the snap as the transition start
 
-        // Fly them all home (same-column cards fly together here; they were
-        // snapshotted from one column so a single flight reads naturally).
-        // z-index stays elevated during the flight, then clears on landing.
-        flying.forEach((el) => {
-          el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
-          el.style.transform = '';
+        // While they wait, the snapped-back cards all live inside the
+        // foundation slot's absolute stack, where DOM order puts the LAST
+        // mover (e.g. 9) on top — the opposite of the column's overlap
+        // (8 should cover part of 9, 9 should sit under 8). Re-z by take-off
+        // order so the first to fly covers the rest, like the original deal.
+        flying.forEach((el, i) => {
+          el.style.zIndex = String(HOLD_Z_BASE + (flying.length - 1 - i));
+        });
+
+        // Fly them home ONE AT A TIME — `moved` is in engine auto-move order
+        // (lowest rank / outermost card first), so staggering by index reads
+        // as a peeling cascade into the foundations, same cadence as the
+        // dragon take-off above. The z-index lift happens at take-off only
+        // and is cleared on landing.
+        flying.forEach((el, i) => {
+          const delay = i * STAGGER_MS;
+          const takeOff = () => {
+            el.style.zIndex = String(6000 + i);
+            el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
+            el.style.transform = '';
+          };
+          if (delay === 0) takeOff();
+          else setTimeout(takeOff, delay);
           setTimeout(() => {
             el.style.zIndex = '';
-          }, FLY_MS);
+          }, delay + FLY_MS);
         });
-        await new Promise((r) => setTimeout(r, FLY_MS + 60));
+        const maxDelay = (flying.length - 1) * STAGGER_MS;
+        await new Promise((r) => setTimeout(r, FLY_MS + maxDelay + 60));
         for (const el of flying) {
           el.style.transition = '';
           el.style.transform = '';
@@ -218,6 +261,9 @@ export function useDragonCollect(game: SolitaireGameApi): () => void {
       }
     } finally {
       game.collecting.value = false;
+      // The flight is fully settled — if this collect won the game, show the
+      // win overlay NOW (it was held back so it never pops over flying cards).
+      game.flushDeferredWin();
     }
   };
 }

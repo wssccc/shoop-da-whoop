@@ -30,6 +30,13 @@ export function useSolitaireGame() {
   const justDealt = ref(false);
   /** Set true while the dragon-collect flight runs (drag & layout disabled). */
   const collecting = ref(false);
+  /**
+   * A win detected WHILE the dragon-collect flight is still running. The
+   * overlay must wait until every card has landed — otherwise the "恭喜通关"
+   * dialog pops mid-animation over flying cards. `flushDeferredWin()` (called
+   * by useDragonCollect once the flight settles) releases it.
+   */
+  let deferredWin = false;
 
   // Boot: restore any in-progress save, then collapse the safe auto-moves.
   const saved = Storage.loadGame();
@@ -74,7 +81,11 @@ export function useSolitaireGame() {
   engine.onWin = () => {
     wins.value += 1;
     Storage.setWins(wins.value);
-    won.value = true;
+    // A plain move can win immediately; a win that lands mid-collect-flight
+    // (the last auto-moved card reaching its foundation IS the win) waits for
+    // the flight to finish so the overlay appears after the animation.
+    if (collecting.value) deferredWin = true;
+    else won.value = true;
   };
 
   // Sync the persisted mute flag into the singleton.
@@ -116,7 +127,11 @@ export function useSolitaireGame() {
 
   function undo(): boolean {
     const wasUndone = engine.undo();
-    if (wasUndone) afterChange();
+    if (wasUndone) {
+      // The board is no longer in a winning state — drop any held-back win.
+      deferredWin = false;
+      afterChange();
+    }
     return wasUndone;
   }
 
@@ -124,8 +139,21 @@ export function useSolitaireGame() {
     engine.newGame();
     state.value = engine.getState();
     won.value = false;
+    deferredWin = false;
     justDealt.value = true; // useDealing plays the fly-in, then settles auto-moves
     Storage.saveGame(state.value); // persist the fresh deal; reload should NOT revert to a stale save
+  }
+
+  /**
+   * Release a win that was held back during the dragon-collect flight. Called
+   * by useDragonCollect after the last card lands — the win counter is already
+   * bumped (persisted) at detection time; this only reveals the overlay.
+   */
+  function flushDeferredWin(): void {
+    if (deferredWin) {
+      deferredWin = false;
+      won.value = true;
+    }
   }
 
   /**
@@ -166,6 +194,7 @@ export function useSolitaireGame() {
     undo,
     newGame,
     settleAfterDeal,
+    flushDeferredWin,
     toggleMute,
     validDropTargets,
     grabRun,

@@ -651,7 +651,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  /* FLYOVER LAYER — every fixed full-screen float (overlay / toasts) lives
+     ABOVE the card animation bands (max 9000 = drag / deal flight). Without
+     this the last auto-moved card (e.g. n-black-9 at z 6008) would fly OVER
+     the win overlay the moment it appears — the final move often IS the win. */
+  z-index: 100;
 }
 .overlay[hidden] {
   display: none;
@@ -668,6 +672,38 @@ body {
   font-size: 54px;
   color: var(--gold);
   text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
+}
+
+/* Win overlay redesign: the golden halo BREATHES on the taiji glyph itself
+   (text-shadow pulse); the glyph no longer spins. Plain CSS keyframe on
+   text-shadow only — no @property / gradient var(), safe for Safari 13 /
+   iOS 13, see memories/legacy-browser-css.md). */
+.win-card {
+  border-color: rgba(216, 177, 90, 0.65);
+}
+.win-card .overlay-glyph {
+  font-size: 72px;
+  animation: win-breathe 2.8s ease-in-out infinite;
+}
+@keyframes win-breathe {
+  0%,
+  100% {
+    text-shadow:
+      0 0 12px rgba(216, 177, 90, 0.35),
+      0 0 30px rgba(216, 177, 90, 0.18);
+  }
+  50% {
+    text-shadow:
+      0 0 26px rgba(216, 177, 90, 0.95),
+      0 0 64px rgba(216, 177, 90, 0.5);
+  }
+}
+/* Respect reduced-motion: keep a steady halo, drop the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .win-card .overlay-glyph {
+    animation: none;
+    text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
+  }
 }
 .overlay-card h2 {
   margin: 8px 0 4px;
@@ -694,6 +730,14 @@ body {
 /* New-game confirmation dialog: two buttons side by side. */
 .newgame-card {
   padding: 30px 38px;
+}
+/* Defensive stacking: the win overlay renders later in the DOM and both are
+   fixed full-screen layers, so without this the confirm dialog would sit
+   UNDER the win overlay and its buttons would be unclickable. (askNewGame()
+   already skips the confirm when a win is showing; this guards any future
+   path.) */
+.overlay.newgame-overlay {
+  z-index: 105;
 }
 .newgame-card .overlay-glyph {
   font-size: 44px;
@@ -736,7 +780,9 @@ body {
   flex-direction: column;
   gap: 8px;
   align-items: center;
-  z-index: 60;
+  /* Above every card animation band and both overlays; pointer-events:none
+     so it never blocks drag or dialog clicks. */
+  z-index: 110;
   pointer-events: none;
 }
 .toast {

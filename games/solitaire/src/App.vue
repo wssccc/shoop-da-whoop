@@ -64,6 +64,14 @@ function isDragonPile(cell: FreeCell) {
 const showNewGameConfirm = ref(false);
 
 function askNewGame() {
+  // Win overlay is open → the board is already finished, nothing to lose:
+  // restart immediately instead of stacking a confirm dialog over the win
+  // dialog (two fixed .overlay layers at the same z-index would trap the
+  // click — the later-rendered win overlay intercepts the confirm button).
+  if (game.won.value) {
+    game.newGame();
+    return;
+  }
   showNewGameConfirm.value = true;
 }
 function confirmNewGame() {
@@ -232,7 +240,7 @@ const onCollectDragons = useDragonCollect(game);
   <AnimatePresence>
     <motion.div
       v-if="showNewGameConfirm"
-      class="overlay"
+      class="overlay newgame-overlay"
       :initial="{ opacity: 0 }"
       :animate="{ opacity: 1 }"
       :exit="{ opacity: 0 }"
@@ -270,7 +278,7 @@ const onCollectDragons = useDragonCollect(game);
       :transition="{ duration: 0.2 }"
     >
       <motion.div
-        class="overlay-card"
+        class="overlay-card win-card"
         :initial="{ scale: 0.85, opacity: 0 }"
         :animate="{ scale: 1, opacity: 1 }"
         :exit="{ scale: 0.85, opacity: 0 }"
