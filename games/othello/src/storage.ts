@@ -5,16 +5,25 @@
  * Auto-save after every move so refreshing the page resumes the game.
  */
 
-import type { Cell, Player } from './game/OthelloGame';
+import type { Cell, Player, Position } from './game/OthelloGame';
 
 const STORAGE_KEY = 'othello_game_state';
 const SETTINGS_KEY = 'othello_settings';
+
+/** Pure-data snapshot of the game at one point in time (used for undo). */
+export interface GameSnapshot {
+  board: Cell[][];
+  currentPlayer: Player;
+  lastMove: Position | null;
+}
 
 export interface SavedGameState {
   board: Cell[][];
   currentPlayer: Player;
   humanPlayer: Player;
   aiDifficulty: 'easy' | 'medium' | 'hard' | 'expert';
+  /** Undo history (optional; old saves predate this field). */
+  history?: GameSnapshot[];
 }
 
 export interface SavedSettings {

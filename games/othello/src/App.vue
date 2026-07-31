@@ -8,6 +8,7 @@
  *   Dialogs:    help, settings, game-over
  */
 
+import { ref } from 'vue';
 import { useOthelloGame } from './composables/useOthelloGame';
 import OthelloBoard from './components/OthelloBoard.vue';
 import BaseButton from './components/ui/BaseButton.vue';
@@ -21,6 +22,7 @@ import {
   Cpu,
   Zap,
   Brain,
+  Undo2,
 } from 'lucide-vue-next';
 
 const {
@@ -41,6 +43,8 @@ const {
   resetGame,
   switchSide,
   setDifficulty,
+  undo,
+  canUndo,
 } = useOthelloGame();
 
 // ── Derived display helpers ─────────────────────────────
@@ -71,6 +75,27 @@ const winnerText = () => {
   if (w === 0) return '平局！';
   if (w === humanPlayer.value) return '你赢了！🎉';
   return 'AI 赢了！🤖';
+};
+
+// ── Local UI state: confirm dialogs ──────────────────────
+// Undo and reset are destructive enough to warrant a second tap.
+const confirmUndo = ref(false);
+const confirmReset = ref(false);
+
+const requestUndo = () => {
+  if (!canUndo.value) return;
+  confirmUndo.value = true;
+};
+const requestReset = () => {
+  confirmReset.value = true;
+};
+
+// Side picker in the settings dialog: switching starts a fresh game,
+// so close the dialog to reveal the new board (mirrors setDifficulty).
+const chooseSide = (side: 1 | 2) => {
+  if (humanPlayer.value === side) return;
+  switchSide();
+  showSettings.value = false;
 };
 </script>
 
@@ -156,20 +181,21 @@ const winnerText = () => {
             variant="outline"
             size="sm"
             class="bg-slate-800/60 border-slate-600 text-white hover:bg-slate-700"
-            @click="resetGame"
+            :disabled="!canUndo"
+            @click="requestUndo"
           >
-            <RotateCcw class="size-4" />
-            <span class="hidden sm:inline">重开</span>
+            <Undo2 class="size-4" />
+            <span class="hidden sm:inline">悔棋</span>
           </BaseButton>
 
           <BaseButton
             variant="outline"
             size="sm"
             class="bg-slate-800/60 border-slate-600 text-white hover:bg-slate-700"
-            @click="switchSide"
+            @click="requestReset"
           >
-            <User class="size-4" />
-            <span class="hidden sm:inline">换边</span>
+            <RotateCcw class="size-4" />
+            <span class="hidden sm:inline">重开</span>
           </BaseButton>
 
           <BaseButton
@@ -216,32 +242,74 @@ const winnerText = () => {
         <p>3. 翻转方向为横、竖、斜八个方向。</p>
         <p>4. 若一方无合法落子位置则跳过。</p>
         <p>5. 双方均无合法走法时游戏结束，棋子多者胜。</p>
-        <div class="mt-3 rounded-md bg-green-900/30 p-3 text-xs text-green-300">
-          💡 提示：占据角落可以稳固地盘，避免下在角落旁边的位置（X位/C位）以免送给对手角落。
+        <div class="mt-3 rounded-md bg-slate-800/60 p-3 text-xs text-slate-300">
+          ↩️ 悔棋：点「悔棋」会一并撤回你的上一手和 AI 的应手，回到你可落子的回合；本局内可无限次悔棋，刷新页面后仍可继续悔。
         </div>
       </div>
     </BaseDialog>
 
     <!-- ── Settings Dialog ── -->
-    <BaseDialog :open="showSettings" title="AI 难度" @update:open="showSettings = $event">
-      <div class="space-y-3">
-        <p class="text-sm text-slate-400">选择 AI 难度（迭代次数越高越强）：</p>
-        <div class="grid grid-cols-2 gap-2">
-          <BaseButton
-            v-for="d in (['easy', 'medium', 'hard', 'expert'] as const)"
-            :key="d"
-            :variant="aiDifficulty === d ? 'default' : 'outline'"
-            size="sm"
-            class="justify-start"
-            :class="aiDifficulty === d
-              ? 'bg-green-600 text-white hover:bg-green-500'
-              : 'border-slate-600 text-slate-300 hover:bg-slate-700'"
-            @click="setDifficulty(d)"
-          >
-            <Zap class="size-3" />
-            {{ difficultyLabel[d] }}
-            <span class="ml-auto text-[10px] opacity-60">{{ difficultyIterations[d] }}次</span>
-          </BaseButton>
+    <BaseDialog :open="showSettings" title="设置" @update:open="showSettings = $event">
+      <div class="space-y-5">
+        <!-- 执棋颜色（你） -->
+        <div>
+          <p class="mb-2 text-sm text-slate-300">执棋颜色（你）：</p>
+          <div class="grid grid-cols-2 gap-2">
+            <BaseButton
+              variant="outline"
+              size="sm"
+              class="justify-start"
+              :class="humanPlayer === 1
+                ? 'bg-sky-600 text-white hover:bg-sky-500'
+                : 'bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'"
+              @click="chooseSide(1)"
+            >
+              <span
+                class="inline-block h-3 w-3 rounded-full"
+                :style="{ backgroundColor: '#000000', backgroundImage: 'linear-gradient(135deg, #6b7280, #000000)' }"
+              />
+              黑棋
+              <span class="ml-auto text-[10px] opacity-60">先手</span>
+            </BaseButton>
+            <BaseButton
+              variant="outline"
+              size="sm"
+              class="justify-start"
+              :class="humanPlayer === 2
+                ? 'bg-sky-600 text-white hover:bg-sky-500'
+                : 'bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'"
+              @click="chooseSide(2)"
+            >
+              <span
+                class="inline-block h-3 w-3 rounded-full"
+                :style="{ backgroundColor: '#ffffff', backgroundImage: 'linear-gradient(135deg, #ffffff, #d1d5db)' }"
+              />
+              白棋
+              <span class="ml-auto text-[10px] opacity-60">后手</span>
+            </BaseButton>
+          </div>
+        </div>
+
+        <!-- AI 难度 -->
+        <div>
+          <p class="mb-2 text-sm text-slate-300">AI 难度（迭代次数越高越强）：</p>
+          <div class="grid grid-cols-2 gap-2">
+            <BaseButton
+              v-for="d in (['easy', 'medium', 'hard', 'expert'] as const)"
+              :key="d"
+              variant="outline"
+              size="sm"
+              class="justify-start"
+              :class="aiDifficulty === d
+                ? 'bg-sky-600 text-white hover:bg-sky-500'
+                : 'bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'"
+              @click="setDifficulty(d)"
+            >
+              <Zap class="size-3" />
+              {{ difficultyLabel[d] }}
+              <span class="ml-auto text-[10px] opacity-60">{{ difficultyIterations[d] }}次</span>
+            </BaseButton>
+          </div>
         </div>
       </div>
     </BaseDialog>
@@ -271,13 +339,47 @@ const winnerText = () => {
         </div>
 
         <BaseButton
-          variant="default"
-          class="bg-green-600 hover:bg-green-500"
+          variant="outline"
+          class="bg-sky-600 text-white hover:bg-sky-500"
           @click="resetGame"
         >
           <RotateCcw class="size-4" />
           再来一局
         </BaseButton>
+      </div>
+    </BaseDialog>
+
+    <!-- ── Undo Confirm ── -->
+    <BaseDialog :open="confirmUndo" title="悔棋" @update:open="confirmUndo = $event">
+      <p class="text-sm text-slate-300">确定撤回你的上一手和 AI 的应手吗？</p>
+      <div class="mt-5 flex justify-end gap-2">
+        <BaseButton
+          variant="outline" size="sm"
+          class="bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+          @click="confirmUndo = false"
+        >取消</BaseButton>
+        <BaseButton
+          variant="outline" size="sm"
+          class="bg-sky-600 text-white hover:bg-sky-500"
+          @click="undo(); confirmUndo = false"
+        >确认悔棋</BaseButton>
+      </div>
+    </BaseDialog>
+
+    <!-- ── Reset Confirm ── -->
+    <BaseDialog :open="confirmReset" title="重开" @update:open="confirmReset = $event">
+      <p class="text-sm text-slate-300">确定重新开始吗？当前棋局进度将丢失。</p>
+      <div class="mt-5 flex justify-end gap-2">
+        <BaseButton
+          variant="outline" size="sm"
+          class="bg-slate-900/50 border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white"
+          @click="confirmReset = false"
+        >取消</BaseButton>
+        <BaseButton
+          variant="outline" size="sm"
+          class="bg-red-600 text-white hover:bg-red-500"
+          @click="resetGame(); confirmReset = false"
+        >确认重开</BaseButton>
       </div>
     </BaseDialog>
   </div>

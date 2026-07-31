@@ -12,7 +12,7 @@
 
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import { OthelloGame, type Cell, type Player, type Position } from '../game/OthelloGame';
-import { clearGameState, loadGameState, loadSettings, saveGameState, saveSettings } from '../storage';
+import { clearGameState, loadGameState, loadSettings, saveGameState, saveSettings, type GameSnapshot } from '../storage';
 import MctsWorker from '../worker/mcts.worker.ts?worker';
 
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
@@ -36,6 +36,12 @@ export function useOthelloGame() {
   // Transient notice shown when a player has no legal move and must pass.
   // Holds the Player who just passed, or null when there's nothing to show.
   const passNotice = ref<Player | null>(null);
+  // Undo history: one pure-data snapshot per state change (human move, AI
+  // move, or pass). Cleared on reset; persisted with the game state so undo
+  // survives a page refresh. Stored as plain data (not OthelloGame instances)
+  // so it serializes to localStorage and keeps the game-logic layer history-
+  // free (MCTS cloning would otherwise duplicate it everywhere).
+  const history = ref<GameSnapshot[]>([]);
 
   // Non-reactive guard (like useRef) to prevent re-entrant AI calls.
   let isAiRunning = false;
@@ -58,6 +64,11 @@ export function useOthelloGame() {
     }
     return s;
   });
+  // Undo is only available when there's history to revert to, the AI isn't
+  // mid-computation (would race the worker's reply), and the game isn't over.
+  const canUndo = computed(
+    () => history.value.length > 0 && !isAiThinking.value && !gameOver.value,
+  );
 
   // ── Worker lifecycle ───────────────────────────────────────
   function initWorker() {
@@ -121,7 +132,18 @@ export function useOthelloGame() {
     return flipped;
   }
 
+  /** Push a deep-copy snapshot of the current game onto the undo history. */
+  function pushHistory(): void {
+    history.value.push({
+      board: game.value.board.map(r => [...r]),
+      currentPlayer: game.value.currentPlayer,
+      lastMove: lastMove.value,
+    });
+  }
+
   function applyMove(row: number, col: number) {
+    // Snapshot the state *before* mutation so it can be undone.
+    pushHistory();
     const newGame = game.value.clone();
     const player = newGame.currentPlayer;
     const flipped = getFlippedPositions(newGame, row, col, player);
@@ -140,9 +162,49 @@ export function useOthelloGame() {
   }
 
   function skipTurn() {
+    pushHistory();
     const newGame = game.value.clone();
     newGame.switchPlayer();
     game.value = newGame;
+    afterGameChange();
+  }
+
+  /**
+   * Undo back to the most recent human decision point, popping the AI's
+   * reply (and any forced passes) along the way. Each snapshot was captured
+   * *before* a mutation, so restoring one yields a valid prior state. We
+   * loop until it's the human's turn again (or history is exhausted, e.g.
+   * undoing back to an AI-opened game's start) so a single click reverts
+   * both the AI's answer and the player's own previous move.
+   */
+  function undo() {
+    if (history.value.length === 0) return;
+
+    // Clear transient UI/timer state so undo doesn't fight it.
+    flippedInfo.value = null;
+    if (passNoticeTimer !== null) {
+      clearTimeout(passNoticeTimer);
+      passNoticeTimer = null;
+    }
+    passNotice.value = null;
+    gameOver.value = false;
+
+    do {
+      const snap = history.value.pop();
+      if (!snap) break;
+      const restored = new OthelloGame(8);
+      restored.board = snap.board.map(r => [...r]);
+      restored.currentPlayer = snap.currentPlayer;
+      game.value = restored;
+      lastMove.value = snap.lastMove;
+    } while (
+      history.value.length > 0 &&
+      game.value.currentPlayer !== humanPlayer.value
+    );
+
+    // Re-drive the turn engine: persists the reverted state (history
+    // included), re-checks pass/game-over, and — since we land on the
+    // human's turn — won't re-dispatch the AI.
     afterGameChange();
   }
 
@@ -219,6 +281,7 @@ export function useOthelloGame() {
     lastMove.value = null;
     flippedInfo.value = null;
     gameOver.value = false;
+    history.value = [];
     clearGameState();
     afterGameChange();
   }
@@ -238,11 +301,18 @@ export function useOthelloGame() {
 
   // ── Persistence ────────────────────────────────────────────
   function persistGame() {
+    // Deep-copy history boards so the serialized state can't be mutated
+    // later via live OthelloGame references.
     saveGameState({
       board: game.value.board,
       currentPlayer: game.value.currentPlayer,
       humanPlayer: humanPlayer.value,
       aiDifficulty: aiDifficulty.value,
+      history: history.value.map(s => ({
+        board: s.board.map(r => [...r]),
+        currentPlayer: s.currentPlayer,
+        lastMove: s.lastMove,
+      })),
     });
   }
 
@@ -277,6 +347,8 @@ export function useOthelloGame() {
       game.value = restored;
       humanPlayer.value = saved.humanPlayer;
       aiDifficulty.value = saved.aiDifficulty;
+      // Restore undo history (old saves predating this field get an empty one).
+      history.value = saved.history ?? [];
 
       if (restored.isGameOver()) {
         gameOver.value = true;
@@ -318,10 +390,12 @@ export function useOthelloGame() {
     currentPlayer,
     validMoves,
     flippedKeys,
+    canUndo,
     // Actions
     handleCellClick,
     resetGame,
     switchSide,
     setDifficulty,
+    undo,
   };
 }

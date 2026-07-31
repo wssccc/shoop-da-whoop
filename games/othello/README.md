@@ -58,6 +58,8 @@ games/othello/
 - **Flip animation**: 3D perspective `rotateY` animation on captures
 - **Local persistence**: Auto-saves game state and settings
 - **Game-over detection**: Endgame scoring with winner announcement
+- **Undo (悔棋)**: Reverts your last move together with the AI's reply, back to your
+  previous decision point. Unlimited per game; survives a page refresh.
 - **Dark theme**: Tailwind `slate` palette with green board
 
 ## Build
