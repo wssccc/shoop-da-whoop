@@ -171,10 +171,12 @@ export function useSolitaireGame() {
     return result;
   }
 
-  function collectDragons(): boolean {
-    const color = engine.dragonReady();
-    if (!color) return false;
-    const result = engine.collectDragons(color);
+  /** Collect dragons — auto-picks the first ready colour, or a caller-chosen
+   *  one (the 💡 hint executes solver steps, which name the colour). */
+  function collectDragons(color?: CardColor): boolean {
+    const c = color ?? engine.dragonReady();
+    if (!c) return false;
+    const result = engine.collectDragons(c);
     if (result.ok) afterChange();
     return result.ok;
   }

@@ -23,6 +23,7 @@ import type {
   FreeCell,
 } from '@solitaire/game/types';
 import { useSolitaireGame } from './composables/useSolitaireGame';
+import { useHint } from './composables/useHint';
 import { useAudio } from './composables/useAudio';
 import { useAchievements } from './composables/useAchievements';
 import { useDragController } from './composables/useDragController';
@@ -35,6 +36,7 @@ const boardRef = ref<HTMLElement | null>(null);
 useAudio();
 
 const game = useSolitaireGame();
+const hint = useHint(game);
 const achievements = useAchievements(game.wins);
 const { toggle: toggleFullscreen } = useFullscreen();
 
@@ -115,6 +117,13 @@ const onCollectDragons = useDragonCollect(game);
             :disabled="!game.canUndo.value"
             @click="onUndo"
           >↶ 撤销</button>
+          <button
+            class="btn-hint"
+            type="button"
+            :title="hint.solving.value ? '求解中…' : '💡 提示一步（自动执行当前局面解的第一步）'"
+            :disabled="hint.solving.value || game.won.value || game.justDealt.value"
+            @click="hint.hintOnce()"
+          >{{ hint.solving.value ? '⏳' : '💡' }}</button>
           <button
             class="btn-mute"
             type="button"
@@ -311,6 +320,18 @@ const onCollectDragons = useDragonCollect(game);
         :transition="{ duration: 0.25 }"
       >
         {{ t.achievement.name }}
+      </motion.div>
+    </AnimatePresence>
+    <AnimatePresence>
+      <motion.div
+        v-if="hint.hintMsg.value"
+        class="toast hint-toast"
+        :initial="{ opacity: 0, y: 10 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :exit="{ opacity: 0, y: -6 }"
+        :transition="{ duration: 0.25 }"
+      >
+        {{ hint.hintMsg.value }}
       </motion.div>
     </AnimatePresence>
   </div>
