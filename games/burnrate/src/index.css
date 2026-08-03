@@ -1,0 +1,15 @@
+/* Minimal global styles for Burn Rate — the console theme lives in
+ * `console.css` (imported by App.vue). Kept intentionally tiny; the
+ * shadcn tokens were only consumed by the retired OA layout + BaseButton. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: #0a0a12;
+  color: #e8e8f5;
+  -webkit-font-smoothing: antialiased;
+}

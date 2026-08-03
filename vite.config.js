@@ -46,6 +46,7 @@ export default defineConfig({
     alias: {
       '@othello': resolve(__dirname, 'games/othello/src'),
       '@solitaire': resolve(__dirname, 'games/solitaire/src'),
+      '@burnrate': resolve(__dirname, 'games/burnrate/src'),
     },
   },
 
@@ -70,6 +71,7 @@ export default defineConfig({
         solitaire: resolve(__dirname, 'games/solitaire/index.html'),
         '1a2b': resolve(__dirname, 'games/1a2b/index.html'),
         othello: resolve(__dirname, 'games/othello/index.html'),
+        burnrate: resolve(__dirname, 'games/burnrate/index.html'),
       },
     },
   },

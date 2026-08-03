@@ -15,6 +15,8 @@ export default {
     './games/othello/src/**/*.{js,ts,jsx,tsx,vue}',
     './games/solitaire/index.html',
     './games/solitaire/src/**/*.{js,ts,jsx,tsx,vue}',
+    './games/burnrate/index.html',
+    './games/burnrate/src/**/*.{js,ts,jsx,tsx,vue}',
   ],
   theme: {
     extend: {
