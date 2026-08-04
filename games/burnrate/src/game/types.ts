@@ -98,6 +98,13 @@ export type Card = VPCard | StaffCard | ProjectCard | ActionCard | ConsultantCar
 
 // ---- Player & game state --------------------------------------------------
 
+/** One entry in a player's revenge ledger: how many times an attacker hit
+ *  them, and on which turn (for exponential decay on read). */
+export interface AttackerRecord {
+  count: number;
+  lastTurn: number;
+}
+
 export interface PlayerState {
   cash: number;
   hand: Card[];
@@ -120,6 +127,11 @@ export interface PlayerState {
    *  (house rule: 1 discard per turn, no compensation). Reset at their
    *  next turn start. */
   discardedThisTurn: boolean;
+  /** Revenge ledger: per-attacker {count, lastTurn}. Drives the AI's
+   *  grudge bonus so it retaliates against players who attacked it,
+   *  instead of piling on the weakest seat. `count` is stored already
+   *  decayed to `lastTurn`; reads apply further decay for elapsed rounds. */
+  attackers: Record<PlayerId, AttackerRecord>;
 }
 
 export type LogType = 'info' | 'good' | 'attack';

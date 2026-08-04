@@ -17,7 +17,13 @@
 // applies the chosen actions through the engine and then completes doable
 // projects. Deterministic under a seeded rng (rng only gates consultant).
 
-import { AI_NO_ATTACK_ROUNDS } from '../constants';
+import {
+    AI_GRUDGE_DECAY,
+    AI_GRUDGE_WEIGHT,
+    AI_NO_ATTACK_ROUNDS,
+    AI_TARGET_TEMPERATURE,
+    START_CASH,
+} from '../constants';
 import type { BurnRateEngine } from '../engine';
 import {
     badAbandonCost,
@@ -32,16 +38,61 @@ import {
 } from '../rules';
 import type { AiAction, Card, GameState, PlayerId, Rng, StaffCard } from '../types';
 
-/** Player with the lowest cash among `player`'s alive opponents. Ties are
- *  broken *randomly* — the old `<=` reduce always favoured the lowest index,
- *  so with everyone at $100M seats 1-3 all dumped their round-1 attacks on
- *  seat 0 (measured 14.6% vs ~27% win rate). */
-export function weakestFoe(state: GameState, player: PlayerId, rng: Rng = Math.random): PlayerId | null {
+/** Effective grudge `player` holds against `foe`: the stored count decayed
+ *  by the rounds elapsed since the last attack. Pure read - never mutates
+ *  state (the ledger is decayed on write in `recordAttack`). Returns 0 for a
+ *  foe who never attacked `player`, so sampling degrades to pure weak-point
+ *  when there is no grudge. */
+export function effectiveGrudge(state: GameState, player: PlayerId, foe: PlayerId): number {
+  const rec = state.players[player].attackers[foe];
+  if (!rec) return 0;
+  const elapsed = Math.max(0, state.turn - rec.lastTurn);
+  return rec.count * Math.pow(AI_GRUDGE_DECAY, elapsed);
+}
+
+/** Weak-point score of `foe` from `player`'s viewpoint: higher = more
+ *  exploitable. Public info only (cash + board + liabilities) - hand cards
+ *  are hidden, so the AI doesn't peek at what it can't see. A cash-drained
+ *  but heavily-staffed board scores low (strong), correcting the old
+ *  "lowest cash = weakest" fallacy that piled everyone onto the first mover. */
+export function weakPoint(state: GameState, foe: PlayerId): number {
+  const p = state.players[foe];
+  let wp = START_CASH - p.cash;
+  for (const c of p.company) {
+    if (c.kind === 'vp') wp -= 30;                        // VPs are defensive strength
+    else if (c.kind === 'staff') wp -= c.skill * 6;       // staff too
+    else if (c.kind === 'consultant') wp += c.salary * 5; // parasite = liability
+  }
+  for (const proj of p.projects) wp += proj.burn * 3;     // ongoing burns bleed them
+  return wp;
+}
+
+/** Sample a foe by (weak-point + grudge) score via softmax. Weaker and more
+ *  vengeful targets are picked more often, but no single target is
+ *  guaranteed - this breaks the "everyone piles on the lowest-cash seat"
+ *  death spiral. When nobody has attacked `player`, grudge is 0 and this
+ *  reduces to pure weak-point sampling. */
+export function sampleFoeByWeakPoint(
+  state: GameState,
+  player: PlayerId,
+  rng: Rng = Math.random,
+): PlayerId | null {
   const foes = opponents(state, player);
   if (foes.length === 0) return null;
-  const minCash = Math.min(...foes.map((f) => state.players[f].cash));
-  const tied = foes.filter((f) => state.players[f].cash === minCash);
-  return tied[Math.floor(rng() * tied.length)];
+  if (foes.length === 1) return foes[0];
+  const scores = foes.map(
+    (f) => weakPoint(state, f) + effectiveGrudge(state, player, f) * AI_GRUDGE_WEIGHT,
+  );
+  // Softmax with temperature; shift by max for numerical stability.
+  const max = Math.max(...scores);
+  const exps = scores.map((s) => Math.exp((s - max) / AI_TARGET_TEMPERATURE));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  let r = rng() * sum;
+  for (let i = 0; i < foes.length; i++) {
+    r -= exps[i];
+    if (r <= 0) return foes[i];
+  }
+  return foes[foes.length - 1];
 }
 
 /** Player with the highest cash among `player`'s alive opponents. */
@@ -57,9 +108,9 @@ export function chooseAiAction(
   rng: Rng = Math.random,
 ): AiAction | null {
   const me = state.players[player];
-  const weakest = weakestFoe(state, player, rng);
-  if (weakest === null) return null;
-  const richest = richestFoe(state, player) ?? weakest;
+  const foes = opponents(state, player);
+  if (foes.length === 0) return null;
+  const richest = richestFoe(state, player);
   // Opening détente (house rule): the AI plays no attack cards during the
   // first `AI_NO_ATTACK_ROUNDS` rounds, so the first mover isn't punished for
   // spending first (he becomes the group's "weakest" → gets ganged).
@@ -69,22 +120,32 @@ export function chooseAiAction(
   const vp = me.hand.find((c) => c.kind === 'vp' && !vpAlreadyHeld(state, player, c.dept));
   if (vp) return { kind: 'hire', cardId: vp.id };
 
-  // 2. Audit a cash-strapped foe (impl plays it even if blocked by Fin VP).
-  if (!opening && state.players[weakest].cash < 50) {
+  // 2. Audit when someone is cash-strapped; the target is sampled by
+  //    weak-point + grudge so the whole table doesn't pile on one seat.
+  if (!opening && foes.some((f) => state.players[f].cash < 50)) {
     const audit = me.hand.find((c) => c.kind === 'action' && c.act === 'audit');
-    if (audit) return { kind: 'audit', target: weakest };
+    if (audit) {
+      const target = sampleFoeByWeakPoint(state, player, rng);
+      if (target !== null) return { kind: 'audit', target };
+    }
   }
 
-  // 3. Dump a Bad project on the weakest foe.
+  // 3. Dump a Bad project on a sampled foe (weak-point + grudge weighted).
   if (!opening) {
     const bad = me.hand.find((c) => c.kind === 'project' && c.subtype === 'bad');
-    if (bad) return { kind: 'assignProject', cardId: bad.id, target: weakest };
+    if (bad) {
+      const target = sampleFoeByWeakPoint(state, player, rng);
+      if (target !== null) return { kind: 'assignProject', cardId: bad.id, target };
+    }
   }
 
-  // 4. Cripple the weakest foe with a parasite consultant (70% of the time).
+  // 4. Cripple a sampled foe with a parasite consultant (70% of the time).
   if (!opening) {
     const consultant = me.hand.find((c) => c.kind === 'action' && c.act === 'consultant');
-    if (consultant && rng() < 0.7) return { kind: 'consultant', target: weakest };
+    if (consultant && rng() < 0.7) {
+      const target = sampleFoeByWeakPoint(state, player, rng);
+      if (target !== null) return { kind: 'consultant', target };
+    }
   }
 
   // 5. Poach the most valuable foe card (validPoachTargets already applies

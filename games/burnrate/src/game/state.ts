@@ -28,6 +28,7 @@ export function createPlayer(): PlayerState {
     bailoutUsed: false,
     wasStrictLowest: false,
     discardedThisTurn: false,
+    attackers: {},
   };
 }
 

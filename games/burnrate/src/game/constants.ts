@@ -66,6 +66,31 @@ export const VP_REWARD_BONUS = 1.5;
  *  mean 8 → ~11-12 rounds.) */
 export const AI_NO_ATTACK_ROUNDS = 4;
 
+/** Softmax temperature for the AI's weak-point target sampling. Higher = more
+ *  spread (closer to uniform), lower = greedier (locks onto the weakest).
+ *  Tuned at 50 so the most exploitable foe is favoured but no single seat is
+ *  guaranteed - this breaks the "everyone piles on the lowest-cash player"
+ *  death spiral that deterministic weakest-selection caused. */
+export const AI_TARGET_TEMPERATURE = 50;
+
+/** Weight of the grudge (revenge) bonus added to a foe's weak-point score.
+ *  Each attack on the AI adds an effective-grudge unit (decayed over rounds);
+ *  ×20 makes one recent grudge comparable to a ~$20M cash gap - enough to
+ *  steer targeting toward attackers without overriding raw weakness. */
+export const AI_GRUDGE_WEIGHT = 20;
+
+/** Per-round decay of the grudge ledger. Effective grudge = stored count ×
+ *  decay^(turns since last attack), computed lazily on read so the state is
+ *  never mutated by the passage of time. 0.85 lets recent conflicts dominate
+ *  while ancient grievances fade. */
+export const AI_GRUDGE_DECAY = 0.85;
+
+/** How strongly MCTS (hard/expert) lets the grudge ledger bias its final
+ *  root-child pick. The chosen action's visits are scaled by
+ *  (1 + λ × grudgeNorm(target)); λ=0.15 keeps MCTS largely win-rate driven
+ *  with a light revenge nudge (max ~15% visits boost). */
+export const AI_MCTS_GRUDGE_LAMBDA = 0.15;
+
 /** Cap on the rotating battle log (UI keeps only the most recent entries). */
 export const MAX_LOG = 50;
 

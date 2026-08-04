@@ -87,6 +87,11 @@ export const Storage = {
       const difficulties = Array.isArray(obj.difficulties)
         ? (obj.difficulties as AiDifficulty[])
         : [];
+      // Backfill the revenge ledger for saves that predate it (no format
+      // bump - a missing `attackers` is just an empty grudge ledger, no loss).
+      for (const p of st.players as Record<string, unknown>[]) {
+        if (!p.attackers) p.attackers = {};
+      }
       return { state: obj.state as GameState, difficulties };
     } catch {
       return null;

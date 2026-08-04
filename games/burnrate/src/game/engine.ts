@@ -13,6 +13,7 @@
 
 import { buildDeck } from './cards';
 import {
+    AI_GRUDGE_DECAY,
     CONSULTANT_SALARY_MAX,
     CONSULTANT_SALARY_MIN,
     HAND_CAP,
@@ -841,6 +842,18 @@ export class BurnRateEngine {
   //      the do*At target ops do NOT (the player path consumes via pending, the
   //      AI path consumes in applyAiAction). -------------------------------
 
+  /** Record an attack in the victim's revenge ledger (drives the AI's grudge
+   *  targeting). The stored count is decayed to the current turn on write,
+   *  so reads only need to decay the elapsed time since `lastTurn`. */
+  protected recordAttack(from: PlayerId, to: PlayerId): void {
+    const victim = this.player(to);
+    const prev = victim.attackers[from];
+    const prevCount = prev?.count ?? 0;
+    const prevTurn = prev?.lastTurn ?? this.state.turn;
+    const decayed = prevCount * Math.pow(AI_GRUDGE_DECAY, this.state.turn - prevTurn);
+    victim.attackers[from] = { count: decayed + 1, lastTurn: this.state.turn };
+  }
+
   protected doAudit(player: PlayerId, foe: PlayerId): OkResult {
     const idx = this.indexOfAction(player, 'audit');
     if (idx < 0) return { ok: false, reason: '手中无审计牌' };
@@ -851,6 +864,7 @@ export class BurnRateEngine {
       this.log(`🛡️ ${this.side(foe)} 有 Finance VP，审计无效`, 'info');
     } else {
       this.player(foe).auditThisTurn = true;
+      this.recordAttack(player, foe);
       this.log(`💥 ${this.side(player)} 审计了 ${this.side(foe)}，本轮薪水翻倍`, 'attack');
     }
     return { ok: true };
@@ -873,6 +887,7 @@ export class BurnRateEngine {
       desc: `每轮索要 $${cost}M`,
     };
     this.player(foe).company.push(consultant);
+    this.recordAttack(player, foe);
     this.log(
       `🎩 ${this.side(player)} 塞给 ${this.side(foe)} 一个每轮 $${cost}M 的高价顾问！`,
       'attack',
@@ -903,6 +918,7 @@ export class BurnRateEngine {
       this.player(actor).cash -= cost;
       foeCompany.splice(ref.index, 1);
       this.state.discard.push(target);
+      this.recordAttack(actor, foe);
       this.log(`🛡️ ${this.side(actor)} 花 $${cost}M 拆除了 ${this.side(foe)} 的 HR 副总裁（作废）！`, 'attack');
       return { ok: true };
     }
@@ -914,6 +930,7 @@ export class BurnRateEngine {
     this.player(actor).cash -= cost;
     foeCompany.splice(ref.index, 1);
     this.player(actor).company.push(target);
+    this.recordAttack(actor, foe);
     this.log(`🎯 ${this.side(actor)} 花 $${cost}M 从 ${this.side(foe)} 挖走了 ${target.name}！`, 'attack');
     // A poached engineer/marketer may have just completed a project for us.
     this.autoCompleteProjects(actor);
@@ -938,6 +955,7 @@ export class BurnRateEngine {
     if (idx < 0) return { ok: false, reason: '手中无烂尾项目' };
     const [card] = this.player(actor).hand.splice(idx, 1);
     this.player(foe).projects.push(card as ProjectCard);
+    this.recordAttack(actor, foe);
     this.log(`💣 ${this.side(actor)} 把 ${card.name} 塞给了 ${this.side(foe)}！`, 'attack');
     return { ok: true };
   }
@@ -970,6 +988,7 @@ export class BurnRateEngine {
     }
     foeCompany.splice(ref.index, 1);
     this.state.discard.push(target);
+    this.recordAttack(actor, foe);
     this.log(`👋 ${this.side(actor)} 迫使 ${target.name} 从 ${this.side(foe)} 辞职`, 'attack');
     return { ok: true };
   }
@@ -1000,6 +1019,7 @@ export class BurnRateEngine {
     p.hand.splice(idx, 1);
     this.player(dest).projects.push(card);
     if (dest !== player) {
+      this.recordAttack(player, dest);
       this.log(`💣 ${this.side(player)} 把 ${card.name} 塞给了 ${this.side(dest)}！`, 'attack');
     } else {
       this.log(`📋 ${this.side(player)} 启动了 ${card.name}`, 'info');

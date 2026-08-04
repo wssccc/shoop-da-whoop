@@ -11,10 +11,10 @@
 // truncated at `depth` plays, then scored by `evaluate`. Backpropagation is
 // binary from the root player's perspective (survive-to-end = 1).
 
-import { MCTS_EXPLORATION_C } from '../../constants';
+import { AI_MCTS_GRUDGE_LAMBDA, MCTS_EXPLORATION_C } from '../../constants';
 import { BurnRateEngine } from '../../engine';
 import type { AiAction, GameState, PlayerId, Rng } from '../../types';
-import { chooseAiAction } from '../heuristic';
+import { chooseAiAction, effectiveGrudge } from '../heuristic';
 import { evaluate } from './eval';
 import { actionKey, legalActions } from './legal';
 import { sampleWorld } from './world';
@@ -143,11 +143,34 @@ function rollout(
 
 // ---- Search ---------------------------------------------------------------
 
+/** Resolve the foe a targeting action hits, for grudge weighting. Returns
+ *  null for self-targeting / non-attacking actions (hire, self-project,
+ *  discard, rescue) so they get no grudge boost. */
+function actionTargetPlayer(state: GameState, a: AiAction): PlayerId | null {
+  switch (a.kind) {
+    case 'audit':
+    case 'consultant':
+      return a.target;
+    case 'assignProject':
+      return a.target === 'self' ? null : a.target;
+    case 'poach':
+    case 'resign': {
+      for (let pid = 0; pid < state.players.length; pid++) {
+        if (state.players[pid].company.some((c) => c.id === a.targetCardId)) return pid;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
 /**
  * Find the best next play for `player`, from the *real* state, using IS-MCTS:
  * each iteration samples a deterministic world, walks the shared tree with
  * UCB1 (implicit end-turn transitions), expands one node, then rolls out
- * heuristically. Returns the root child with the most visits.
+ * heuristically. Returns the root child with the most visits, nudged by the
+ * grudge ledger (visits × (1 + λ × grudgeNorm(target))).
  */
 export function findBestAction(
   state: GameState,
@@ -244,10 +267,20 @@ export function findBestAction(
     }
   }
 
-  // Pick the most-visited root child.
+  // Pick the root child with the most visits, nudged by the grudge ledger:
+  // visits × (1 + λ × grudgeNorm(target)). Keeps MCTS largely win-rate driven
+  // with a light revenge bias toward players who attacked us.
   let best: Node | null = null;
+  let bestScore = -Infinity;
   for (const child of root.children.values()) {
-    if (!best || child.visits > best.visits) best = child;
+    const target = actionTargetPlayer(state, child.action!);
+    const grudge = target !== null ? effectiveGrudge(state, player, target) : 0;
+    const grudgeNorm = grudge / (1 + grudge);
+    const score = child.visits * (1 + AI_MCTS_GRUDGE_LAMBDA * grudgeNorm);
+    if (score > bestScore) {
+      bestScore = score;
+      best = child;
+    }
   }
   return best ? best.action : moves[0];
 }

@@ -103,7 +103,12 @@ src/
 
 ### AI（`game/ai/`）
 
-- `weakestFoe` 平局**随机化**（消除等现金时全场集火 0 号位的 seat 偏差）。
+- 目标选择改为**弱点+复仇加权采样**（`sampleFoeByWeakPoint`）：给每个对手打
+  weak-point 分（cash 流失 + 板面强度 + 负债，仅公开信息）+ 复仇加成（被该对手
+  攻击过的次数×0.85 指数衰减，读时懒计算），softmax(T=50) 采样。消除"全场集火
+  最低现金位"的死亡螺旋，且 AI 会优先报复攻击过自己的玩家。攻击记录存于
+  `PlayerState.attackers`，由 engine 在 audit/consultant/烂尾/挖角/辞职时写入。
+  MCTS(hard/expert) 的 root 选择另加 λ=0.15 的复仇微调（visits×(1+λ×grudgeNorm)）。
 - 启发式阶梯（按优先级）：①雇 VP ②审计最弱（现金 <50）③塞烂尾 ④顾问（70% rng）
   ⑤挖角（`validPoachTargets` 驱动：HR 挡箭牌先挖 HR VP、现金余量 $35M 门槛）
   ⑥雇员工 ⑦⑧启动市场/技术项目（无 VP 门槛）⑨坏项目自救（画大饼优先于现金止损）

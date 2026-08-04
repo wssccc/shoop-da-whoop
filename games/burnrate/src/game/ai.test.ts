@@ -2,7 +2,7 @@
 // `chooseAiAction` never mutates, so we drive it off hand-built states.
 // Multiplayer: players are an array; the AI under test is player 1.
 import { expect, test } from 'vitest';
-import { chooseAiAction, chooseAiCompletions, runAiTurn, weakestFoe } from './ai';
+import { chooseAiAction, chooseAiCompletions, runAiTurn, sampleFoeByWeakPoint } from './ai';
 import { BurnRateEngine } from './engine';
 import { mulberry32 } from './rng';
 import type {
@@ -37,7 +37,7 @@ function mkHand(...cards: Card[]): Card[] {
   return cards;
 }
 function basePlayer(over: Partial<PlayerState> = {}): PlayerState {
-  return { cash: 100, hand: [], company: [], projects: [], auditThisTurn: false, alive: true, bailoutUsed: false, wasStrictLowest: false, discardedThisTurn: false, ...over };
+  return { cash: 100, hand: [], company: [], projects: [], auditThisTurn: false, alive: true, bailoutUsed: false, wasStrictLowest: false, discardedThisTurn: false, attackers: {}, ...over };
 }
 function state(playerOver: Partial<PlayerState> = {}, aiOver: Partial<PlayerState> = {}, turn = 5): GameState {
   return {
@@ -165,12 +165,35 @@ test('opening détente: no attack cards in the first 4 rounds (house rule)', () 
   expect(chooseAiAction(open, 1)).toEqual({ kind: 'audit', target: 0 });
 });
 
-test('weakestFoe tie-break is randomized (no seat-0 bias)', () => {
+test('sampleFoeByWeakPoint spreads attacks across equal foes (no seat-0 pile-on)', () => {
   const s = state({ cash: 100 }, { cash: 100 });
-  s.players.push(basePlayer({ cash: 100 })); // 3 players, all $100M
+  s.players.push(basePlayer({ cash: 100 })); // 3 players, all $100M (equal weak point)
   const hits = new Set<number>();
-  for (let i = 0; i < 100; i++) hits.add(weakestFoe(s, 1, mulberry32(i))!);
+  for (let i = 0; i < 100; i++) hits.add(sampleFoeByWeakPoint(s, 1, mulberry32(i))!);
   expect(hits.size).toBe(2); // seats 0 and 2 both get picked
+});
+
+test('sampleFoeByWeakPoint favours the weaker foe but does not lock in', () => {
+  // Player 0 is much weaker (cash drained, empty board) than player 2.
+  const s = state({ cash: 30 }, { cash: 100 });
+  s.players.push(basePlayer({ cash: 100 }));
+  let weak = 0;
+  for (let i = 0; i < 500; i++) if (sampleFoeByWeakPoint(s, 1, mulberry32(i)) === 0) weak++;
+  // Weaker foe picked most of the time (~80%), but NOT 100% (sampling spreads it).
+  expect(weak).toBeGreaterThan(350);
+  expect(weak).toBeLessThan(500);
+});
+
+test('sampleFoeByWeakPoint retaliates against attackers (grudge bonus)', () => {
+  // Player 2 attacked the AI; even with equal cash, the AI skews toward 2.
+  const s = state({ cash: 100 }, { cash: 100 });
+  s.players.push(basePlayer({ cash: 100 }));
+  s.players[1].attackers = { 2: { count: 1, lastTurn: s.turn } };
+  let revenge = 0;
+  for (let i = 0; i < 500; i++) if (sampleFoeByWeakPoint(s, 1, mulberry32(i)) === 2) revenge++;
+  // Grudge bias (~60%) beats the 50/50 baseline; not 100% (still sampled).
+  expect(revenge).toBeGreaterThan(270);
+  expect(revenge).toBeLessThan(500);
 });
 
 test('AI rescues its own bad project: burnout before cash abandon', () => {
