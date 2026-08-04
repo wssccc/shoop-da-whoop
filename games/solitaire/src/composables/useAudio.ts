@@ -17,8 +17,14 @@ let muted = false;
 function getAudioContextCtor(): AudioContextCtor | undefined {
   if (typeof window === 'undefined') return undefined;
   return (
+    // feature detection: read whichever AudioContext constructor exists.
+    // compat/compat flags both names for iOS 13.0-13.1; runtime is safe (we
+    // never `new` the bare global — always the resolved ctor). Block disable
+    // so both referenced lines are covered.
+    /* eslint-disable compat/compat */
     window.AudioContext ||
     (window as Window & { webkitAudioContext?: AudioContextCtor }).webkitAudioContext
+    /* eslint-enable compat/compat */
   );
 }
 

@@ -17,8 +17,15 @@ let muted = false;
 function getAudioContextCtor(): AudioContextCtor | undefined {
   if (typeof window === 'undefined') return undefined;
   return (
+    // compat/compat flags BOTH AudioContext and webkitAudioContext here as
+    // "unsupported on iOS 13.0-13.1". That is a false positive: this is pure
+    // feature detection — we only read whichever constructor exists, then
+    // `new` the resolved ctor below. Runtime is safe down to iOS 13. Block
+    // disable (not next-line) so both referenced lines are covered.
+    /* eslint-disable compat/compat */
     window.AudioContext ||
     (window as Window & { webkitAudioContext?: AudioContextCtor }).webkitAudioContext
+    /* eslint-enable compat/compat */
   );
 }
 

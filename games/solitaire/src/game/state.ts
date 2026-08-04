@@ -67,9 +67,15 @@ export function snapshotClone(state: Board): Snapshot {
       }
       return { ...c };
     }),
+    // PRE-EXISTING RISK surfaced by the new gate: Object.fromEntries is ES2019
+    // (Chrome 73+ / Safari 12.1+), absent on the Chrome 60 floor. TODO rewrite
+    // as COLORS.reduce() so snapshot/undo can't throw on legacy Chrome. Tracked
+    // separately so this burnrate-focused change doesn't alter solitaire logic.
+    /* eslint-disable compat/compat */
     foundations: Object.fromEntries(
       COLORS.map((c) => [c, state.foundations[c].map((x) => ({ ...x }))]),
     ) as Foundations,
+    /* eslint-enable compat/compat */
     flowerSlot: state.flowerSlot ? { ...state.flowerSlot } : null,
   };
 }

@@ -10,6 +10,7 @@
     "typecheck": "vue-tsc --noEmit -p games/othello/tsconfig.app.json && vue-tsc --noEmit -p games/solitaire/tsconfig.app.json && vue-tsc --noEmit -p games/burnrate/tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint .",
     "bench:burnrate": "BENCH=1 vitest run games/burnrate/src/game/bench.test.ts",
     "bench:burnrate:mass": "BENCH_MASS=1 vitest run games/burnrate/src/game/bench-mass.test.ts",
     "legacy-check": "vite build && ls -la dist/assets"
@@ -31,6 +32,7 @@
     "@vitejs/plugin-legacy": "^8.2.2",
     "@vitejs/plugin-vue": "^6.0.8",
     "eslint": "^9.39.1",
+    "eslint-plugin-compat": "^7.0.2",
     "eslint-plugin-vue": "^9.32.0",
     "globals": "^16.5.0",
     "playwright": "^1.62.1",

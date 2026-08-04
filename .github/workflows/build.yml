@@ -53,6 +53,11 @@ jobs:
             ${{ runner.os }}-vite-${{ hashFiles('**/package-lock.json') }}-
       - name: Install dependencies
         run: npm ci
+      # Compatibility gate: eslint-plugin-compat reads .browserslistrc and
+      # fails the build if any source uses an API/syntax newer than the
+      # iOS 13 / Safari 13 floor (e.g. structuredClone, Array.at, ??).
+      - name: Lint
+        run: npm run lint
       - name: Build with Vite
         run: npm run build
       - name: Upload artifact

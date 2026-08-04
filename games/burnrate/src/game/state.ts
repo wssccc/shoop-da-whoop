@@ -54,9 +54,14 @@ export function createInitialState({ rng = defaultRng, playerCount = MIN_PLAYERS
 }
 
 export function cloneState(state: GameState): GameState {
-  // structuredClone is available on Node 17+ and all evergreen browsers; for a
-  // data-only object it matches a JSON round-trip without dropping `undefined`.
-  return structuredClone(state);
+  // Deep-clone via JSON round-trip. The state is a plain serialisable tree
+  // (no functions / Dates / Maps), so JSON is both correct and universal.
+  // `structuredClone` is Safari 15.4+ / iOS 15.4+ ONLY — absent on the
+  // iOS 13 / Safari 13 floor this project targets, where it threw a
+  // TypeError inside the MCTS worker's sampleWorld (and on state restore),
+  // making every AI turn time out with no card ever played. JSON drops
+  // `undefined`-valued keys, but that is observationally identical here.
+  return JSON.parse(JSON.stringify(state));
 }
 
 /** Pushes a log entry to the front and trims to MAX_LOG. Pure: does not invoke
