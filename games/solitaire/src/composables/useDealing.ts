@@ -216,11 +216,14 @@ export function useDealing(game: SolitaireGameApi): void {
     // Fly them home ONE AT A TIME — `moved` is in engine auto-move order
     // (lowest rank / outermost first), the same peeling cadence as the
     // dragon-collect cascade. The z-index lift happens at take-off only and
-    // is cleared on landing.
+    // is cleared on landing. Z mirrors the hold-band reverse (NOT `6000 + i`):
+    // first-take-off keeps the top z so source-column stacking is preserved
+    // mid-flight (a single move can expose several cards from the SAME column,
+    // whose visual overlap would otherwise reverse). See animateAutoMoves.ts.
     flying.forEach((el, i) => {
       const delay = i * AUTO_STAGGER_MS;
       const takeOff = () => {
-        el.style.zIndex = String(6000 + i);
+        el.style.zIndex = String(6000 + (flying.length - 1 - i));
         el.style.transition = `transform ${AUTO_FLY_MS}ms ${EASE}`;
         el.style.transform = '';
       };

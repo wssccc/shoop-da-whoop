@@ -82,10 +82,25 @@ export async function flyAutoMovedCards(
   // Fly them home ONE AT A TIME — `entries` is in engine auto-move order
   // (lowest rank / outermost first). The z-index lift happens at take-off
   // only and is cleared on landing.
+  //
+  // STACKING ORDER IN FLIGHT MUST MIRROR THE SOURCE COLUMN, not the destination
+  // foundation. Because tableau cards cascade in descending-alt-colour stacks,
+  // a single move can expose several cards in ONE column (e.g. ...black-7,
+  // red-6) which now both fly home. In the source column the lower rank (red-6)
+  // was visually ON TOP of the higher one (black-7). If we lifted z by
+  // `6000 + i` (later take-off = higher z), the later-take-off card would
+  // pop ABOVE the earlier one mid-flight and visibly reverse the source
+  // stacking — exactly the "叠放顺序会混乱" symptom. We mirror the hold-band
+  // formula `base + (flying.length - 1 - i)` so the first-to-take-off card
+  // (lowest rank, source-top among cross-/same-source peers) keeps the highest
+  // z throughout flight. Landing clears z one at a time, after which the
+  // foundation slot's natural DOM order takes over (later-pushed = higher) and
+  // ends with the correct top card — see memories/solitaire-overlay-zindex-stack.md
+  // for the same reverse-index reasoning used during the hold phase.
   flying.forEach((el, i) => {
     const delay = i * AUTO_STAGGER_MS;
     const takeOff = () => {
-      el.style.zIndex = String(6000 + i);
+      el.style.zIndex = String(6000 + (flying.length - 1 - i));
       el.style.transition = `transform ${AUTO_FLY_MS}ms ${AUTO_EASE}`;
       el.style.transform = '';
     };

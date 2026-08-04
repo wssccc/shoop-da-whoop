@@ -163,9 +163,14 @@ export function useSolitaireGame() {
     if (moved.length > 0) {
       // Disable motion-v layout on exactly these cards (next render) so we
       // own their transform channel; fly them home, then re-enable.
-      autoMovingIds.value = moved.map((m) => m.id);
+      // APPEND (not replace) so a second launch while a previous flight is
+      // still airborne (hint/undo bypass the drag guard) keeps the in-flight
+      // cards' noLayout engaged — replacing here would hand them back to
+      // motion-v mid-transform and they'd vanish/flip weirdly (`牌看不见`).
+      const myIds = new Set(moved.map((m) => m.id));
+      autoMovingIds.value = [...autoMovingIds.value, ...myIds];
       void flyAutoMovedCards(moved, srcRects).finally(() => {
-        autoMovingIds.value = [];
+        autoMovingIds.value = autoMovingIds.value.filter((id) => !myIds.has(id));
       });
     }
     return result;

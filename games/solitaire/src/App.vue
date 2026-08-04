@@ -12,23 +12,23 @@
  * polyfill quirks. Drag (Phase 5) and motion (Phase 6) attach to the board root
  * via the `#board` ref.
  */
-import { ref, shallowReadonly } from 'vue';
-import { useFullscreen } from '@vueuse/core';
-import { motion, AnimatePresence } from 'motion-v';
 import Card from '@solitaire/components/Card.vue';
 import { FREE_CELL_COUNT, TABLEAU_COLS } from '@solitaire/game/constants';
 import type {
-  Card as CardModel,
-  CardColor,
-  FreeCell,
+    CardColor,
+    Card as CardModel,
+    FreeCell,
 } from '@solitaire/game/types';
-import { useSolitaireGame } from './composables/useSolitaireGame';
-import { useHint } from './composables/useHint';
-import { useAudio } from './composables/useAudio';
+import { useFullscreen } from '@vueuse/core';
+import { AnimatePresence, motion } from 'motion-v';
+import { ref, shallowReadonly } from 'vue';
 import { useAchievements } from './composables/useAchievements';
+import { useAudio } from './composables/useAudio';
+import { useDealing } from './composables/useDealing';
 import { useDragController } from './composables/useDragController';
 import { useDragonCollect } from './composables/useDragonCollect';
-import { useDealing } from './composables/useDealing';
+import { useHint } from './composables/useHint';
+import { useSolitaireGame } from './composables/useSolitaireGame';
 
 const boardRef = ref<HTMLElement | null>(null);
 
@@ -114,14 +114,14 @@ const onCollectDragons = useDragonCollect(game);
           <button
             type="button"
             title="撤销"
-            :disabled="!game.canUndo.value"
+            :disabled="!game.canUndo.value || game.autoMovingIds.value.length > 0"
             @click="onUndo"
           >↶ 撤销</button>
           <button
             class="btn-hint"
             type="button"
             :title="hint.solving.value ? '求解中…' : '💡 提示一步（自动执行当前局面解的第一步）'"
-            :disabled="hint.solving.value || game.won.value || game.justDealt.value"
+            :disabled="hint.solving.value || game.won.value || game.justDealt.value || game.autoMovingIds.value.length > 0"
             @click="hint.hintOnce()"
           >{{ hint.solving.value ? '⏳' : '💡' }}</button>
           <button

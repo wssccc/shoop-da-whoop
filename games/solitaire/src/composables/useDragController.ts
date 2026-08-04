@@ -115,7 +115,12 @@ export function useDragController(
   function onDown(e: PointerEvent) {
     // Ignore input while the dealing fly-in (or its auto-move settle) runs —
     // cards are mid-transform and the board state is about to change anyway.
-    if (game.justDealt.value || game.collecting.value) return;
+    // Also block while a user-move-triggered auto-cascade is still flying
+    // (autoMovingIds). snapshotCardRects() in moveCard samples DOM positions
+    // synchronously; starting a new move mid-flight would grab stale rects of
+    // the in-flight cards and let the second cascade fight the first over the
+    // same transform channel — leaving cards stuck or visually invisible.
+    if (game.justDealt.value || game.collecting.value || game.autoMovingIds.value.length > 0) return;
     const target = e.target as HTMLElement;
     const cardElLocal = target.closest<HTMLElement>('.card');
     if (!cardElLocal || cardElLocal.classList.contains('no-drag')) return;

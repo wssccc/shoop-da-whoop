@@ -237,11 +237,14 @@ export function useDragonCollect(game: SolitaireGameApi): () => void {
         // (lowest rank / outermost card first), so staggering by index reads
         // as a peeling cascade into the foundations, same cadence as the
         // dragon take-off above. The z-index lift happens at take-off only
-        // and is cleared on landing.
+        // and is cleared on landing. Z mirrors the hold-band reverse
+        // (NOT `6000 + i`) — see animateAutoMoves.ts: one 收龙 can expose
+        // several cards from the SAME column whose visual stacking would
+        // otherwise reverse mid-flight.
         flying.forEach((el, i) => {
           const delay = i * STAGGER_MS;
           const takeOff = () => {
-            el.style.zIndex = String(6000 + i);
+            el.style.zIndex = String(6000 + (flying.length - 1 - i));
             el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
             el.style.transform = '';
           };
