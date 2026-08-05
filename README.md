@@ -13,8 +13,10 @@ Shoop Da Whoop 是一个 IE6 复古拼贴风主题站点：
   - `solitaire/` — 纸牌接龙（FreeCell 风格，已实现）
   - `1a2b/` — 猜数字（1A2B · Bulls and Cows，已实现）
   - `othello/` — 黑白棋（Othello · Reversi，MCTS AI，已实现）
+  - `burnrate/` — 烧钱计划（卡牌对战 AI，Vue 3 + TypeScript + Tailwind）
+  - `csgame/` — 第一人称射击（CS 风格 FPS，Three.js，原生 JS，桌面 / 触屏）
 
-技术栈：Vite + 原生 JavaScript（Solitaire/1A2B）+ Vue 3 + TypeScript（Othello），`@vitejs/plugin-legacy` 双包兼容 iOS/Safari 13。
+技术栈：Vite MPA；Solitaire / Othello / Burnrate 用 Vue 3 + TypeScript（Tailwind 按需引入），1A2B / Csgame 用原生 JavaScript（Csgame 采用 Three.js），`@vitejs/plugin-legacy` 双包兼容 iOS/Safari 13。
 
 ## 开发
 
@@ -31,6 +33,8 @@ npm run dev      # 启动开发服务器（HMR）
 | 纸牌接龙 | <http://localhost:8000/games/solitaire/> |
 | 1A2B | <http://localhost:8000/games/1a2b/> |
 | Othello | <http://localhost:8000/games/othello/> |
+| 烧钱计划 | <http://localhost:8000/games/burnrate/> |
+| Whoop Strike | <http://localhost:8000/games/csgame/> |
 
 ## 构建与部署
 
@@ -55,12 +59,16 @@ shoop-da-whoop/
 │   ├── styles/reset.css               # 全局样式重置
 │   └── utils/common.js                # 通用纯函数工具
 └── games/                             # 附属游戏
-    ├── solitaire/                     # 纸牌接龙（原生 JS）
-    │   ├── index.html / css/ js/ docs/
+    ├── solitaire/                     # 纸牌接龙（Vue 3 + TS）
+    │   ├── index.html / css/ / docs/ / src/
     ├── 1a2b/                          # 猜数字（原生 JS）
     │   ├── index.html / css/ js/ docs/
-    └── othello/                       # 黑白棋（Vue 3 + TS）
-        ├── index.html / src/ / tsconfig*.json / eslint.config.js
+    ├── othello/                       # 黑白棋（Vue 3 + TS）
+    │   ├── index.html / src/ / tsconfig*.json / eslint.config.js
+    ├── burnrate/                      # 烧钱计划（Vue 3 + TS + Tailwind）
+    │   ├── index.html / src/ / tsconfig*.json
+    └── csgame/                        # 第一人称射击（原生 JS + Three.js）
+        ├── index.html / css/ / src/
 ```
 
 详见各游戏 README：
@@ -68,3 +76,5 @@ shoop-da-whoop/
 - [games/solitaire/README.md](./games/solitaire/README.md)
 - [games/1a2b/README.md](./games/1a2b/README.md)
 - [games/othello/README.md](./games/othello/README.md)
+- [games/burnrate/README.md](./games/burnrate/README.md)
+- [games/csgame/README.md](./games/csgame/README.md)

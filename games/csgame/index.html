@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1611">
+<title>WHOOP-STRIKE</title>
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="crosshair">
+    <span class="ch v"></span><span class="ch h"></span>
+  </div>
+  <div id="hitmarker"></div>
+
+  <div id="scorebar">
+    <div id="kills">0 <small>KILLS</small></div>
+    <div id="wave">hold the arena</div>
+  </div>
+
+  <div id="hpwrap">
+    <div id="hpnum">100<small>HP</small></div>
+    <div id="hpbar"><div id="hpfill"></div></div>
+  </div>
+
+  <div id="ammowrap">
+    <div id="mag">17</div>
+    <div id="reserve">/ 68</div>
+    <div id="reload-hint"></div>
+  </div>
+
+  <div id="feed"></div>
+  <div id="damage"></div>
+  <div id="lowhp"></div>
+</div>
+
+<!-- TOUCH CONTROLS — visible only on body.touch (injected by main.js when a
+     touch device is detected). iOS Safari has never shipped the Pointer Lock
+     API, so touch devices use on-screen twin-stick controls instead. -->
+<div id="touch-ui" aria-hidden="true">
+  <div id="stick-zone">
+    <div id="stick-base"><div id="stick-knob"></div></div>
+  </div>
+  <div id="look-zone"></div>
+  <div id="touch-btns">
+    <button id="btn-reload" class="tbtn" type="button" aria-label="装弹">⟳</button>
+    <button id="btn-ads" class="tbtn" type="button" aria-label="开镜">🎯</button>
+    <button id="btn-jump" class="tbtn" type="button" aria-label="跳跃">⤒</button>
+    <button id="btn-fire" class="tbtn" type="button" aria-label="开火">●</button>
+  </div>
+</div>
+
+<!-- START SCREEN -->
+<div id="start" class="screen">
+  <div class="tag">single-page fps</div>
+  <h1>WHOOP-STRIKE</h1>
+  <div class="stats">点击任意位置开战</div>
+  <div class="controls controls-kb">
+    <b>WASD</b><span>移动</span>
+    <b>SHIFT</b><span>奔跑</span>
+    <b>SPACE</b><span>跳跃</span>
+    <b>鼠标</b><span>瞄准</span>
+    <b>左键</b><span>开火</span>
+    <b>右键</b><span>开镜</span>
+    <b>R</b><span>装弹</span>
+  </div>
+  <div class="controls controls-touch">
+    <b>左屏拖</b><span>移动</span>
+    <b>右屏拖</b><span>瞄准</span>
+    <b>红钮</b><span>开火</span>
+    <b>⤒</b><span>跳跃</span>
+    <b>⟳</b><span>装弹</span>
+    <b>🎯</b><span>开镜</span>
+  </div>
+  <div class="cta">CLICK / TAP TO ENGAGE</div>
+  <a class="back-home" href="../../index.html" title="返回首页">← shoop-da-whoop archive</a>
+</div>
+
+<!-- GAME OVER SCREEN -->
+<div id="over" class="screen hidden">
+  <div class="tag">you were eliminated</div>
+  <h1>GAME OVER</h1>
+  <div class="stats">击杀 <span id="final-kills">0</span> &nbsp;·&nbsp; 命中率 <span id="final-acc">0%</span></div>
+  <div class="cta">CLICK / R TO RETRY</div>
+</div>
+
+<div id="loader">LOADING ENGINE…</div>
+
+
+<!-- game entry: see ./src/main.js -->
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

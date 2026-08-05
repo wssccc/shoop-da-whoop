@@ -72,6 +72,7 @@ export default defineConfig({
         '1a2b': resolve(__dirname, 'games/1a2b/index.html'),
         othello: resolve(__dirname, 'games/othello/index.html'),
         burnrate: resolve(__dirname, 'games/burnrate/index.html'),
+        csgame: resolve(__dirname, 'games/csgame/index.html'),
       },
     },
   },
