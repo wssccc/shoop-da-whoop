@@ -10,15 +10,15 @@ import type { EngineSoundName } from './constants';
 import * as Rules from './rules';
 import { createInitialState, restoreSnapshot, snapshot } from './state';
 import type {
-    Card,
-    CardColor,
-    CardLocation,
-    DestDescriptor,
-    DragonCard,
-    FlowerCard,
-    GameState,
-    MoveResult,
-    NumberCard,
+  Card,
+  CardColor,
+  CardLocation,
+  DestDescriptor,
+  DragonCard,
+  FlowerCard,
+  GameState,
+  MoveResult,
+  NumberCard,
 } from './types';
 
 /** One atomic step of an action unit — generated AND applied by the engine,
@@ -40,10 +40,17 @@ export class SolitaireEngine {
   state: GameState;
   /** Wired by the composable; fired for every sound effect the engine emits. */
   onSound: (name: EngineSoundName) => void = () => {};
-  /** Wired by the composable; fired once per real win (guarded by `_winAwarded`). */
-  onWin: () => void = () => {};
+  /** Wired by the composable; fired once per real win (guarded by
+   *  `_winAwarded`). Receives the LAST collected card — the one whose
+   *  landing completed the board (a user-placed foundation card, the final
+   *  auto-move, or the last dragon) — so the UI can key the celebration
+   *  off it. */
+  onWin: (lastCard: Card | null) => void = () => {};
 
   private _winAwarded = false; // prevent double-counting wins across undo/re-move
+  /** The last card that landed in a final zone (foundation / flower / dragon
+   *  pile) — handed to onWin so the win UI can vary the celebration. */
+  private lastMovedCard: Card | null = null;
   /** The action unit currently being consumed (beginUnit…endUnit), or null. */
   private unit: Unit | null = null;
 
@@ -58,6 +65,9 @@ export class SolitaireEngine {
   setState(state: GameState): void {
     this.state = state;
     this._winAwarded = Rules.isWin(state);
+    // A restored board carries no collected card from the previous one (the
+    // win gif keys off the LAST collected card — stale would mis-key it).
+    this.lastMovedCard = null;
   }
 
   canUndo(): boolean {
@@ -72,6 +82,7 @@ export class SolitaireEngine {
   newGame(): void {
     this.state = createInitialState();
     this._winAwarded = false;
+    this.lastMovedCard = null; // a fresh deal has no collected card yet
     // Close any unit left open by a cancelled consumption (newGame may be
     // called mid-flight while the executor awaits): the replaced board makes
     // the old unit's steps moot, and leaving it open would make the NEXT
@@ -293,6 +304,7 @@ export class SolitaireEngine {
       };
     }
     this.onSound('dragon');
+    this.lastMovedCard = d; // a dragon can be the card that completes the board
     return { id: d.id, to: { type: 'dragonpile', index: idx } };
   }
 
@@ -304,15 +316,20 @@ export class SolitaireEngine {
       this.state.foundations[to.color].push(card as NumberCard);
       this.onSound('foundation');
     }
+    // Flower and foundation are final zones — record the card for onWin
+    // (the last one IS the one that completed the board).
+    this.lastMovedCard = card;
     // (nextAutoMove never emits column/freecell targets.)
     return { id: card.id, to };
   }
 
-  /** Award the win once per real win (guarded by `_winAwarded`). */
+  /** Award the win once per real win (guarded by `_winAwarded`). Hands the
+   *  last collected card to the caller (null only if no card was ever
+   *  recorded — the UI falls back to its default gif). */
   checkWin(): void {
     if (Rules.isWin(this.state) && !this._winAwarded) {
       this._winAwarded = true;
-      this.onWin();
+      this.onWin(this.lastMovedCard);
       this.onSound('win');
     }
   }
@@ -329,9 +346,11 @@ export class SolitaireEngine {
       this.state.freeCells[dest.index] = sourceCards[0];
     } else if (dest.type === 'foundation') {
       this.state.foundations[dest.color].push(sourceCards[0] as NumberCard);
+      this.lastMovedCard = sourceCards[0];
     } else {
       // flower
       this.state.flowerSlot = sourceCards[0] as FlowerCard;
+      this.lastMovedCard = sourceCards[0];
     }
   }
 }

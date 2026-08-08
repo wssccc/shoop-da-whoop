@@ -899,18 +899,23 @@ body {
   /* Win card IN the tableau (no modal — see WinCard.vue): a 3D coin-flip
      card pops in over the now-empty tableau — outer `scale` overshoot bounce
      + inner `.win-card` rotateY spin that starts facing the navy SVG BACK
-     and lands on the 2.gif FRONT, then breathes gold forever (drop-shadow,
-     which CAN glow an <img> face — the old text-shadow on the 🃏 emoji
-     couldn't). The entrance still needs two layers — one element can't host
-     two timing functions on one transform (and `@property` vars are iOS 13
-     unsafe). Plain transform/filter keyframes — no @property / gradient
-     var(), safe for Safari 13 / iOS 13 (memories/legacy-browser-css.md). */
+     and lands on the hash-picked gif FRONT, then breathes gold forever
+     (drop-shadow, which CAN glow an <img> face — the old text-shadow on the
+     🃏 emoji couldn't). The entrance still needs two layers — one element
+     can't host two timing functions on one transform (and `@property` vars
+     are iOS 13 unsafe). Plain transform/filter keyframes — no @property /
+     gradient var(), safe for Safari 13 / iOS 13 (memories/legacy-browser-css.md). */
   .win-stage {
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
     left: 0; /* `inset:0` → explicit (iOS 13 parity) */
+    /* Win-card sizing root — 50vh tall (the @supports override below tracks
+       iOS Safari's URL bar; iOS 13 ignores dvh and keeps vh). Defined HERE
+       because the breathe glow (.win-emblem, ABOVE .win-scene) must inherit
+       it too — custom props only flow downward. */
+    --win-card-h: 50vh;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -922,6 +927,16 @@ body {
        stage keeps any stray tableau slot clickable; the button opts back in. */
     z-index: 10050;
     pointer-events: none;
+  }
+  /* iOS 15.4+ (dynamic viewport): the URL bar collapses the visible height,
+     so 50vh would sit lower than half of what's actually on screen. dvh is
+     an unknown unit on iOS 13 — a custom-property double-declaration would
+     NOT fall back (custom props accept any token stream), so gate the var
+     override behind @supports instead (iOS 13 supports @supports). */
+  @supports (height: 50dvh) {
+    .win-stage {
+      --win-card-h: 50dvh;
+    }
   }
   .win-emblem {
     /* Outer scale entrance (overshoot bounce) AND the gold drop-shadow
@@ -939,20 +954,22 @@ body {
   /* 3D coin-flip card (see WinCard.vue): perspective root → flippable face
      pair. Plain transforms only (no @property), iOS-13 / Safari-13 safe. */
   .win-scene {
-    /* Same aspect ratio as the tableau cards (96×136 ≈ 0.706) so the win
-       card reads as the SAME deck, just bigger (140×198). */
-    width: var(--win-card-w, 140px);
-    height: var(--win-card-h, 198px);
-    /* 600px (was 900px): deeper 3D so the spin's foreshortening reads
-       clearly at the 90°/270° moments. */
-    perspective: 600px;
+    /* Same 0.707 ratio as the tableau cards (140×198) so the win card reads
+       as the SAME deck, just MUCH bigger — 50vh tall (dvh where supported,
+       see .win-stage). The width derives from the height so the ratio can
+       never drift. */
+    width: calc(var(--win-card-h) * 0.70707);
+    height: var(--win-card-h);
+    /* Perspective scales WITH the card (600px was ≈3× the old 198px card):
+       the coin-flip foreshortening reads the same at any size. */
+    perspective: calc(var(--win-card-h) * 3);
   }
   .win-card {
     position: relative;
     width: 100%;
     height: 100%;
     transform-style: preserve-3d;
-    transform: rotateY(0deg); /* parks showing the 2.gif FRONT */
+    transform: rotateY(0deg); /* parks showing the picked gif FRONT */
     /* The entrance/exit spins are DRIVEN BY WinCard.vue's rAF loop — JS
        writes rotateY/rotateX and both faces' visibility in the SAME frame.
        Reason: iOS 13's computed transform is unreliable during CSS
@@ -978,19 +995,25 @@ body {
     /* Face visibility during the spin is synced by WinCard.vue's rAF loop
        (iOS 13 backface fallback — two independent CSS animations cannot
        flip both faces in the same frame; see WinCard.vue). */
+    /* The gif fills the face at a UNIFORM width (its own aspect ratio) and
+       is centred vertically — the paper shows as even bands above/below
+       (1.gif square / 2.gif 4:3 / 3.gif banner). */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Margin around the gif: the paper face stays visible as a frame.
+       Percentage padding is relative to the face's width, so it scales with
+       the responsive card. box-sizing keeps 100% width from overflowing. */
+    padding: 10%;
+    box-sizing: border-box;
   }
   .win-card .face.front img {
     display: block;
     width: 100%;
-    height: 100%;
-    /* Margin around the 2.gif: the paper face stays visible as a frame.
-       Percentage padding is relative to the face's width, so it scales with
-       the responsive card (140px → 14px desktop, 108px → ~11px mobile).
-       box-sizing keeps 100% width from overflowing the padding. */
-    padding: 10%;
-    box-sizing: border-box;
-    object-fit: contain; /* 2.gif (native 200×150, 4:3) letterboxed inside
-                             the padded content box */
+    /* Natural aspect ratio — NOT object-fit: contain (that would shrink the
+       wide 3.gif to ~61% of the box width): width:100% + height:auto gives
+       ALL three gifs the same rendered width, each at its own ratio. */
+    height: auto;
   }
   .win-card .face.back {
     transform: rotateY(180deg);
@@ -1013,14 +1036,9 @@ body {
        as-is, framed by the win card's gold border. */
     object-fit: contain;
   }
-  @media (max-width: 560px) {
-    .win-scene {
-      width: 108px;
-      height: 153px;
-    }
-  }
   .win-btn {
-    margin-top: 14px;
+    /* Proportional to the card (14px on the old 198px card ≈ 7%). */
+    margin-top: calc(var(--win-card-h) * 0.07);
     font: inherit;
     /* iOS 13: the button inherits the monospace font stack (no CJK → PingFang
        fallback) with NO explicit font-size — Safari's text-size-adjust then
@@ -1076,14 +1094,16 @@ body {
     }
   }
   @keyframes win-breathe {
+    /* Glow scales WITH the card: 10/22/48px were the old 198px card's
+       5%/11%/24% — the same proportions at 50vh. */
     0%,
     100% {
-      filter: drop-shadow(0 0 10px rgba(216, 177, 90, 0.35))
-        drop-shadow(0 0 22px rgba(216, 177, 90, 0.18));
+      filter: drop-shadow(0 0 calc(var(--win-card-h) * 0.05) rgba(216, 177, 90, 0.35))
+        drop-shadow(0 0 calc(var(--win-card-h) * 0.11) rgba(216, 177, 90, 0.18));
     }
     50% {
-      filter: drop-shadow(0 0 22px rgba(216, 177, 90, 0.95))
-        drop-shadow(0 0 48px rgba(216, 177, 90, 0.5));
+      filter: drop-shadow(0 0 calc(var(--win-card-h) * 0.11) rgba(216, 177, 90, 0.95))
+        drop-shadow(0 0 calc(var(--win-card-h) * 0.24) rgba(216, 177, 90, 0.5));
     }
   }
   /* reka-ui data-state driven overlays/dialogs/toasts: skip the tween under

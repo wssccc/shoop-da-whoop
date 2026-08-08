@@ -5,12 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#08160e" />
     <title>接龙 · Solitaire</title>
-    <!-- Preload the win-card face animation so /images/2.gif (native 200×150,
-         ~460 KB) is decoded before the victory emblem flips to it. The
-         solitaire entry never visits the root collage that otherwise warms
-         these, so without this the first victory flickers while the gif
-         streams in. -->
+    <!-- Preload all three win-card face gifs (native 99×99 / 200×150 /
+         250×108, ~719 KB total) — the victory emblem lands on ONE of them
+         (hash-picked from the last collected card, see src/lib/winGif.ts),
+         so each must be decoded before the flip. The solitaire entry never
+         visits the root collage that otherwise warms these, so without
+         this the first victory flickers while the gif streams in. -->
+    <link rel="preload" href="/images/1.gif" as="image" type="image/gif" />
     <link rel="preload" href="/images/2.gif" as="image" type="image/gif" />
+    <link rel="preload" href="/images/3.gif" as="image" type="image/gif" />
   </head>
   <body>
     <div id="root"></div>

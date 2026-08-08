@@ -24,6 +24,7 @@ import type {
   DestDescriptor,
   MoveResult,
 } from '@solitaire/game/types';
+import { winGifFor } from '@solitaire/lib/winGif';
 import { Storage } from '@solitaire/storage';
 import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import {
@@ -39,6 +40,10 @@ export function useSolitaireGame() {
   const engine = new SolitaireEngine();
   const state = shallowRef(engine.state);
   const wins = ref(Storage.getWins());
+  /** The celebration gif for the current win — hash-picked from the LAST
+   *  collected card when onWin fires (see src/lib/winGif.ts). Defaults to
+   *  2.gif until a win records a card. */
+  const winGif = ref('/images/2.gif');
   const muted = ref(Storage.getMuted());
   /** Set true after a win; UI overlays reset to false on new game. */
   const won = ref(false);
@@ -127,9 +132,12 @@ export function useSolitaireGame() {
         break;
     }
   };
-  engine.onWin = () => {
+  engine.onWin = (lastCard) => {
     wins.value += 1;
     Storage.setWins(wins.value);
+    // Pick the celebration gif NOW — the last collected card is final at
+    // detection time, and the reveal only ever shows this value.
+    winGif.value = winGifFor(lastCard);
     // Never reveal the overlay here: a win that lands mid-flight (the last
     // auto-moved card reaching its foundation IS the win) must wait for the
     // flight to settle so the dialog appears after the animation. The
@@ -520,6 +528,7 @@ export function useSolitaireGame() {
   return {
     state,
     wins,
+    winGif,
     muted,
     won,
     justDealt,

@@ -5,8 +5,9 @@
  * A 3D coin-flip card (see index.css): once the last collect-flight has
  * settled (`flushWinIfIdle` → `won`), the card pops in over the tableau —
  * outer `scale` overshoot bounce + `rotateY` coin spin that starts facing
- * the navy SVG BACK and lands on the FRONT (`/images/2.gif`, object-fit
- * contained on a paper face). The outer wrapper carries the gold
+ * the navy SVG BACK and lands on the FRONT — the celebration gif hash-
+ * picked from the LAST collected card (game.winGif; see src/lib/winGif.ts),
+ * width-uniform on a paper face. The outer wrapper carries the gold
  * `drop-shadow` BREATHE (was `text-shadow` on the old 🃏 emoji; text-shadow
  * can't glow an <img>). The 再来一局 button fades in after the entrance;
  * clicking it plays a 1.0s accelerating rotateY spin-off + linear scale 1→0,
@@ -189,10 +190,12 @@ onUnmounted(() => {
     <div ref="emblemRef" class="win-emblem" :class="{ 'is-exiting': exiting }">
       <div class="win-scene">
         <div ref="cardRef" class="win-card" aria-hidden="true">
-          <!-- FRONT: celebration gif (native 200×150, 4:3), letterboxed by
-               object-fit:contain on the paper face (see index.css). -->
+          <!-- FRONT: celebration gif — hash-picked from the LAST collected
+               card (1/2/3.gif, see src/lib/winGif.ts); width:100% +
+               height:auto renders every gif at the same width with its own
+               aspect ratio, centred on the paper face (see index.css). -->
           <div class="face front">
-            <img src="/images/2.gif" alt="" draggable="false" />
+            <img :src="game.winGif.value" alt="" draggable="false" />
           </div>
           <!-- BACK: the shared playing-card back (same file as the locked
                dragon piles — one deck, one identity; object-fit:contain

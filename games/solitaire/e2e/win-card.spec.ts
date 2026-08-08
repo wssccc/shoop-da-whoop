@@ -11,6 +11,17 @@ import { makeSave, num, seedSave } from './helpers/save-state';
 
 const WINS_KEY = 'szsol.wins';
 
+/** djb2 string hash — duplicated from src/lib/winGif.ts so the test can
+ *  predict the celebration gif for the deterministic win path below (the
+ *  last collected card is always `n-red-9`). */
+function djb2(str: string): number {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
 // black-9 on top is UNSAFE (black foundation full) so nothing auto-moves on
 // boot; dragging it to fc-0 cascades red-9 home → win.
 // NB: the tableau black-9 gets its own id (`t-black-9`) — the full black
@@ -90,6 +101,7 @@ test.describe('win card', () => {
       const tr = tableau.getBoundingClientRect();
       return {
         present: true,
+        innerH: window.innerHeight,
         frontSrc: front.getAttribute('src') ?? '',
         backSrc: back.getAttribute('src') ?? '',
         emblemAnim: getComputedStyle(emblem).animationName,
@@ -112,7 +124,11 @@ test.describe('win card', () => {
       };
     });
     expect(info.present).toBe(true);
-    expect(info.frontSrc.endsWith('/images/2.gif')).toBe(true);
+    // The gif is hash-picked from the LAST collected card — this win path
+    // always ends with n-red-9 auto-moving home, so the gif is predictable
+    // (same djb2 as src/lib/winGif.ts).
+    const expectedGif = `/images/${(djb2('n-red-9') % 3) + 1}.gif`;
+    expect(info.frontSrc.endsWith(expectedGif)).toBe(true);
     expect(info.backSrc.endsWith('/images/card-back.svg')).toBe(true);
     expect(info.emblemAnim).toMatch(/win-breathe/);
     expect(info.emblemAnim).toMatch(/win-enter-scale/);
@@ -120,10 +136,13 @@ test.describe('win card', () => {
     expect(info.frontFaceVisible).toBe('visible');
     expect(info.backFaceHidden).toBe('hidden');
     expect(info.preserve3d).toBe(true);
-    // Same aspect ratio as a tableau card (140×198 ≈ 96×136 ≈ 0.706). The
+    // Same aspect ratio as a tableau card (140×198 ≈ 0.706), sized at 50%
+    // of the viewport height (dvh == vh in the headless viewport). The
     // absolute size breathes (win-breathe scales the emblem), so only the
-    // ratio and a "clearly bigger than a tableau card" floor are asserted.
+    // ratio and the 50vh bound are asserted. ±0.5px tolerance — subpixel
+    // rounding must not flake the suite.
     expect(info.cardW / info.cardH).toBeCloseTo(140 / 198, 1);
+    expect(info.cardH).toBeCloseTo(info.innerH / 2, 0);
     expect(info.cardW).toBeGreaterThan(110);
     expect(info.btnText).toBe('再来一局');
     expect(info.centered).toBe(true);

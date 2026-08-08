@@ -206,8 +206,13 @@ describe('action units — engine operation sequence', () => {
             freeCells: [null, null],
         });
         let winCount = 0;
-        e.onWin = () => {
+        // `as Card | null`: without the assertion TS narrows the variable to
+        // the literal `null` initializer at reads after the callback
+        // assignment (closure CFG), making `lastCard?.id` resolve to `never`.
+        let lastCard: Card | null = null as Card | null;
+        e.onWin = (c) => {
             winCount += 1;
+            lastCard = c;
         };
 
         // A user move triggers the cascade: green-9 is safe (green=8, others
@@ -219,6 +224,9 @@ describe('action units — engine operation sequence', () => {
         expect(winCount).toBe(0); // not yet — the unit hasn't settled
         e.endUnit();
         expect(winCount).toBe(1);
+        // The last collected card (the auto-move that completed the board)
+        // travels with the win — the UI hashes it into the celebration gif.
+        expect(lastCard?.id).toBe('green-9-0');
 
         // Guarded: another move does not re-award.
         e.beginUnit('move');

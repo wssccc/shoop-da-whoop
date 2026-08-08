@@ -453,11 +453,11 @@ all foundations[color].length == 9  // 所有终局槽满
 
 **胜利展示**（`WinCard.vue`，无遮罩弹窗，直接浮在空 tableau 区域中央，纯 keyframes，无 `@property` / 渐变 `var()`，iOS 13 安全）：
 
-- **3D 翻转卡**（`WinCard.vue` 内联结构，替换原 🃏 emoji）：`.win-scene`（perspective 根，**600px**）→ `.win-card`（`transform-style:preserve-3d`，`rotateY` 翻转）→ 双面 `.face`（`backface-visibility:hidden`）
+- **3D 翻转卡**（`WinCard.vue` 内联结构，替换原 🃏 emoji）：`.win-scene`（perspective 根，**`calc(var(--win-card-h) × 3)`** 等比缩放——原 600px ≈ 3×198px 卡高）→ `.win-card`（`transform-style:preserve-3d`，`rotateY` 翻转）→ 双面 `.face`（`backface-visibility:hidden`）
   - **背面** `.face.back`（`rotateY(180deg)`）：共享扑克牌背 `<img src="/images/card-back.svg">`（与锁定龙牌堆同一文件，蓝底圆环纹 + 花环边框 + 中央徽章，`object-fit:contain`）
-  - **正面** `.face.front`（`rotateY(0)`）：`/images/2.gif`（原生 200×150 横向 4:3 动图）`object-fit:contain` + **`padding:10%` + `box-sizing:border-box`**（gif 与纸面边缘留出 ~10% 宽的 margin，随响应式缩放），纸色米白底（`#efe9d8`）+ 金描边
-  - 尺寸：桌面 `var(--win-card-w/h,140/165)`（比例≈0.85），`max-width:560px` 缩到 108×127
-- `win-breathe` **2.8s `drop-shadow` 呼吸**挂在 `.win-emblem` 外层包装——`text-shadow` 对 `<img>` 无效（原 🃏 emoji 用 text-shadow，已废），故胜利发光改用 `filter: drop-shadow` 金光（0.35/10px ↔ 0.95/22px）
+  - **正面** `.face.front`（`rotateY(0)`）：胜利动图**按收官牌哈希选取**（`src/lib/winGif.ts`：djb2(card.id) mod 3 → `/images/1.gif` / `2.gif` / `3.gif`，确定性——同一收官牌永远同一张动图；引擎 `onWin(lastCard)` 传出最后落定牌），`width:100% + height:auto`（三张 gif **统一宽度**、各自原比例——1.gif 方形 / 2.gif 4:3 / 3.gif 横幅，纵向留白由纸面 flex 垂直居中承载）+ 纸面 **`padding:10%` + `box-sizing:border-box`**（gif 与纸面边缘留出 ~10% 宽的 margin，随响应式缩放），纸色米白底（`#efe9d8`）+ 金描边
+  - 尺寸：全端统一 `--win-card-h: 50vh`（`@supports (height: 50dvh)` 下用 `50dvh`，iOS Safari 地址栏感知；iOS 13 自动回退 vh），宽 = `calc(var(--win-card-h) × 0.70707)`（保持桌牌 140×198 比例 ≈0.707，读取为同一副牌，只是更大；**不再有 560px 断点覆写**）；index.html 预载全部三张 gif（~719KB）防首胜闪烁
+- `win-breathe` **2.8s `drop-shadow` 呼吸**挂在 `.win-emblem` 外层包装——`text-shadow` 对 `<img>` 无效（原 🃏 emoji 用 text-shadow，已废），故胜利发光改用 `filter: drop-shadow` 金光（随卡等比：`calc(var(--win-card-h) × 0.05 / 0.11 / 0.24)`——原 10/22/48px 是 198px 卡的 5%/11%/24%）
 - 入场 **0.55s 外层缩放回弹 + 1.1s 翻转**：外层 `win-enter-scale`（`scale 0→1`，回弹 `cubic-bezier(0.34,1.56,0.64,1)` 承载呼吸）+ `.win-card` 跑 `win-coin-spin`（`rotateY 180°→720°` 并叠加 **`rotateX ±5°` 俯仰摆动**——像被抛起的硬币晃动，`cubic-bezier(0.22,1,0.36,1)`）——始露背面、落正面，途中 360°/540° 正反交替；一个元素无法对同一 transform 挂两条缓动（`@property` iOS 13 不可用），故拆两层 DOM
 - 按钮「再来一局」沿用 `.overlay-card button` 视觉（金底黑字），入场完成后 **0.2s 淡入**（`win-btn-in`，delay 0.55s + `both` 填充）
 - 点击按钮 → **1.0s 加速翻飞 + 线性缩小**：`.win-card` 跑 `win-exit-coin`（`rotateY` 分段加速 `720°→2520°`）+ `.win-emblem` 跑 `win-exit-scale` 全程线性 `1→0` → 动画结束后 `game.newGame()` 进入发牌阶段；`onUnmounted` 清退出 timer，防 undo/新局竞态重复发牌
