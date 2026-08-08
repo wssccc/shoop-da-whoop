@@ -62,6 +62,13 @@ export default defineConfig([
     rules: { 'compat/compat': 'error' },
   },
 
+  // e2e specs run ONLY on the bundled Playwright Chromium (latest), never on
+  // the iOS 13 / Safari 13 floor — compat's browser targets don't apply.
+  {
+    files: ['games/*/e2e/**/*.{ts,js,mjs}'],
+    rules: { 'compat/compat': 'off' },
+  },
+
   // Parsers per file kind. The compat rule needs a valid AST; these blocks
   // teach ESLint how to read TS / Vue but add NO style rules, so enabling
   // them cannot disturb any pre-existing lint baseline.

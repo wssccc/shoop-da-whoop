@@ -5,6 +5,10 @@ node_modules/
 dist/
 .vite/
 
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+
 # Logs
 *.log
 npm-debug.log*
