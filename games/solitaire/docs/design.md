@@ -246,7 +246,7 @@ pointerup   → 若命中合法 → game.moveCard(run, dest)（成功则 250ms �
 
 **真牌跟随**：拖拽时把 REAL 牌直接加 `translate(dx, dy)` 内联变换（`transition: none`，逐帧即时）；`is-dragging` 类做 z-index 抬升 + `will-change: transform` 独立合成层。原始卡片添加 `is-dragging` 类使其半透明。
 
-**目标检测**：`slotAtPoint()` 遍历 `[data-slot]` 用 `getBoundingClientRect()` 做手动几何命中（**不用** `elementFromPoint`，避免页面缩放 / 祖先 transform 下的坐标漂移，见 memories/drag-hit-test-zoom.md）。
+**目标检测**：落点候选点 = 被拖 run **头牌的几何中心**（pointerdown 时 rect 中心 + 位移 (dx,dy)，纯算术零 reflow），**而非指针位置**——角点抓牌时高亮跟随牌的视觉位置而非手指，松开落点也按牌心提交。`slotAtPoint()` 遍历 `[data-slot]` 用 `getBoundingClientRect()` 做手动几何命中（**不用** `elementFromPoint`，避免页面缩放 / 祖先 transform 下的坐标漂移，见 memories/drag-hit-test-zoom.md）。拖动中**禁止滚动**（wheel preventDefault + 拖动牌 `touch-action: none`）；漏网的 scroll（键盘/程序化）会同时刷新槽矩形并重锚头牌中心。
 
 ### 3.9 `src/composables/useAudio.ts` — 音效系统
 
@@ -439,7 +439,7 @@ all foundations[color].length == 9  // 所有终局槽满
 ### 6.2 拖拽系统
 
 - **真牌跟随（无 ghost 克隆）**：拖拽时把 REAL 牌直接加 `translate(dx, dy)` 内联变换（`transition: none`，逐帧即时）——`is-dragging` 类只做 z-index 抬升 + `will-change: transform` 独立合成层
-- **目标检测**：`slotAtPoint()` 遍历 `[data-slot]` 用 `getBoundingClientRect()` 做手动几何命中（**不用** `elementFromPoint`，避免页面缩放/祖先 transform 下的坐标漂移，见 memories/drag-hit-test-zoom.md）
+- **目标检测**：落点候选点 = 头牌几何中心（抓取时锚点 + (dx,dy)，纯算术），**非指针位置**；`slotAtPoint()` 手动几何命中（**不用** `elementFromPoint`，见 memories/drag-hit-test-zoom.md）；拖动中禁止滚动（wheel preventDefault + `touch-action: none`）
 - **合法释放**：`moveCard` 校验 + 开 unit + 提交（引擎只做 user step）；commit 后牌保持释放点（parked transform），Vue 将其渲染到目标槽位后，用一条 `FLIP_SETTLE_MS`（250ms）`cubic-bezier(0.2,0.8,0.2,1)` CSS transition 从释放点滑到最终位置（归位滑动）；有级联时 250ms 后由 `consumeUnit` 接管逐张飞行，无级联时不设 busy 锁（允许快速连招）
 - **非法释放**：先强制 recalc 提交 parked transform，再过渡回原位（250ms 同曲线）+ `error` 音效
 - **高亮反馈**：合法目标添加 `drop-ok` 类（绿色边框发光），非法目标无反馈

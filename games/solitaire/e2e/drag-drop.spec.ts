@@ -8,6 +8,9 @@
 //      highlighted rect is the pile rect (not stretched to the row
 //      height), and the empty-column rect is the outline box.
 //   4. Dragging into the gap BELOW a short pile no longer hits the column.
+//   5. The drop candidate is the HEAD card's geometric center, not the
+//      pointer: a corner/edge grab highlights the slot under the CARD (and
+//      releases into it), even when the pointer sits outside that slot.
 import { expect, test } from '@playwright/test';
 import { expectSettled, watchConsoleErrors } from './helpers/board';
 import { makeSave, num, seedSave } from './helpers/save-state';
@@ -151,6 +154,132 @@ test.describe('drag drop-zones & highlight', () => {
 
     // 5) Release over fc-0 → the card lands there (drag stays intact).
     await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await expectSettled(page);
+    await expect(page.locator('.slot.free-cell[data-slot="fc-0"] .card')).toHaveAttribute('data-id', 'n-black-4');
+  });
+
+  test('grab by the card edge: the drop candidate is the CARD center, not the pointer', async ({ page }) => {
+    await seedSave(page, makeDropSave(), ['n-black-4', 'n-red-5']);
+    await expectSettled(page);
+
+    // Geometry preconditions: the drop-candidate math below assumes the
+    // DESKTOP breakpoint (--card-w=96, --gap=10, fixed 1280x900 viewport).
+    // If these variables change, the assertions below would silently start
+    // testing the old pointer-based behaviour — fail loudly instead.
+    //   cardW <= 102: the candidate at pointer fc0.x+55 is then OUTSIDE fc-0
+    //   (55 + cardW/2 - 4 > cardW ⇔ cardW < 102); with cardW=96 it sits at
+    //   fc0.right + 3.
+    //   gap >= 6: that candidate stays OUTSIDE fc-1 too (gap > 51 - cardW/2;
+    //   with gap=10 it sits 7px short of fc-1's left edge).
+    const W = await cardW(page);
+    const gap = await page.evaluate(() => {
+      const a = document.querySelector('.slot.free-cell[data-slot="fc-0"]')!.getBoundingClientRect();
+      const b = document.querySelector('.slot.free-cell[data-slot="fc-1"]')!.getBoundingClientRect();
+      return b.left - a.right;
+    });
+    expect(W).toBeLessThanOrEqual(102);
+    expect(gap).toBeGreaterThanOrEqual(6);
+
+    const src = await page.locator('.slot.col[data-slot="col-5"] .card').boundingBox();
+    const fc0 = await page.locator('.slot.free-cell[data-slot="fc-0"]').boundingBox();
+
+    // Grab near the card's LEFT edge: the head-card center then rides
+    // (W/2 - 4)px to the RIGHT of the pointer for the whole drag — the
+    // pointer and the card disagree about which slot they're over.
+    const grabX = src.x + 4;
+    const grabY = src.y + src.height / 2;
+    const offX = src.x + src.width / 2 - grabX; // card center − pointer, fixed
+    await page.mouse.move(grabX, grabY);
+    await page.mouse.down();
+
+    const dropOkState = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.slot.drop-ok')].map((s) => s.getAttribute('data-slot')),
+      );
+
+    // 1) Pointer OUTSIDE fc-0 (24px to its left), card center INSIDE it
+    //    (20px in): the card decides — fc-0 highlights.
+    await page.mouse.move(fc0.x - 24, fc0.y + fc0.height / 2, { steps: 8 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toContain('fc-0');
+
+    // 2) Pointer INSIDE fc-0 (55px in), card center in the 10px dead gap
+    //    between fc-0 and fc-1 (fc0.right + 3): no target under the card —
+    //    no highlight (the old pointer-based test would highlight fc-0).
+    await page.mouse.move(fc0.x + 55, fc0.y + fc0.height / 2, { steps: 8 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toEqual([]);
+
+    // 3) Release in the pose from (1): the pointer is still outside fc-0 but
+    //    the CARD sits over it — the drop commits into fc-0 (its visual
+    //    seat), not the pointer's void.
+    await page.mouse.move(fc0.x - 24, fc0.y + fc0.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await expectSettled(page);
+    await expect(page.locator('.slot.free-cell[data-slot="fc-0"] .card')).toHaveAttribute('data-id', 'n-black-4');
+
+    expect(offX).toBeGreaterThan(0); // sanity: offset math above assumed it
+  });
+
+  test('mid-drag scroll re-anchors the drop candidate to the CARD', async ({ page }) => {
+    await seedSave(page, makeDropSave(), ['n-black-4', 'n-red-5']);
+    await expectSettled(page);
+
+    const src = await page.locator('.slot.col[data-slot="col-5"] .card').boundingBox();
+    const fc0 = await page.locator('.slot.free-cell[data-slot="fc-0"]').boundingBox();
+
+    // Make the viewport scroollable without shifting the board layout: an
+    // absolutely-positioned tall spacer is out of flow. (html/body are
+    // overflow:hidden, but programmatic scrollTo still works on overflowing
+    // content — the only scroll path a mid-drag keyboard/programmatic scroll
+    // could ever take.)
+    await page.evaluate(() => {
+      const spacer = document.createElement('div');
+      spacer.style.cssText =
+        'position:absolute;top:0;left:0;width:1px;height:4000px;pointer-events:none;';
+      document.body.appendChild(spacer);
+      return document.body.offsetHeight; // force the reflow before scrolling
+    });
+
+    const dropOkState = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.slot.drop-ok')].map((s) => s.getAttribute('data-slot')),
+      );
+
+    // Center grab, park the card over fc-0: candidate = card center = fc-0.
+    await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2, { steps: 8 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toEqual(['fc-0']);
+
+    // Scroll the page 120px mid-drag. The card travels WITH the page, so its
+    // candidate point must still sit on fc-0 — the scroll handler must
+    // re-anchor to the card's LAYOUT center (visual center − translate), or
+    // the next hit would be offset by the whole drag vector (dx, dy).
+    await page.evaluate(() => window.scrollTo(0, 120));
+    // Scroll position must actually change: html/body are overflow:hidden,
+    // so this is the key check that the programmatic scroll (and thus the
+    // scroll handler) really ran — otherwise this test is vacuously green.
+    expect(await page.evaluate(() => window.scrollY)).toBe(120);
+    await page.waitForTimeout(60);
+
+    // Move the pointer again (scroll happened mid-drag — the user keeps
+    // dragging!). Scroll moves the CARD and the SLOTS together (both −120px
+    // in viewport coords), so parking the card back over fc-0 means returning
+    // the pointer to the SAME viewport position as before the scroll —
+    // the card then sits at the slot's scrolled center. Wiggle the pointer
+    // first so a fresh pointermove fires, then park it back.
+    // (Without the re-anchor fix, the next pointermove hit-tests from a
+    // stale visual-center anchor plus the whole drag vector — nothing
+    // highlights and the release below reverts.)
+    await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2 + 60, { steps: 4 });
+    await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2, { steps: 4 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toEqual(['fc-0']);
+
+    // Release: the re-anchored candidate commits into fc-0.
     await page.mouse.up();
     await expectSettled(page);
     await expect(page.locator('.slot.free-cell[data-slot="fc-0"] .card')).toHaveAttribute('data-id', 'n-black-4');

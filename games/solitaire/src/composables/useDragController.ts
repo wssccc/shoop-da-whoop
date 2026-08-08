@@ -3,6 +3,10 @@
 // manual rect tests (NOT elementFromPoint), and commits to game.moveCard() on
 // release (or reverts with an error sound + settle-back tween).
 //
+// Drop-candidate hit-tests use the HEAD card's geometric center (grab-time
+// rect center + drag offset — pure arithmetic, no reflow), so the highlight
+// and the release commit follow the card's visual position, not the pointer.
+//
 // 1:1 port of the original input.js DragController, wired to VueUse's
 // `useEventListener` so listeners auto-teardown on component unmount. See
 // memories/drag-hit-test-zoom.md for the iOS pinch-zoom positioning rationale.
@@ -34,6 +38,10 @@ interface DragState {
   e0: { x: number; y: number };
   dx: number;
   dy: number;
+  /** Head card's center at grab time (client coords). The drop-candidate
+   * point is `anchor + (dx, dy)` — pure arithmetic, so highlight and release
+   * track the CARD's visual position, not the pointer. */
+  anchor: { x: number; y: number };
   run: Card[];
   origs: HTMLElement[];
   targets: DestDescriptor[];
@@ -56,7 +64,8 @@ function parseSlot(str: string | null | undefined): DestDescriptor | null {
 }
 
 /**
- * Resolve a pointer position (clientX/Y) to the [data-slot] element under it.
+ * Resolve a point (client coords — the dragged head card's center) to the
+ * [data-slot] element under it.
  *
  * We manually test the point against every slot's getBoundingClientRect()
  * instead of calling document.elementFromPoint(). The drag pipeline elsewhere
@@ -74,6 +83,12 @@ function slotAtPoint(x: number, y: number, slots: DragSlot[]): HTMLElement | nul
     if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return s.el;
   }
   return null;
+}
+
+/** Current drop-candidate point: the head card's geometric center. Derived
+ * from the grab-time anchor + drag offset — no layout read per frame. */
+function hitPoint(d: DragState): { x: number; y: number } {
+  return { x: d.anchor.x + d.dx, y: d.anchor.y + d.dy };
 }
 
 function shake(el: HTMLElement): void {
@@ -110,7 +125,8 @@ export function useDragController(
     // keeps them on compositor layers. Same translate() matrix the original
     // used — the settle tweens later measure from exactly this offset.
     for (const el of d.origs) el.style.transform = `translate(${dx}px, ${dy}px)`;
-    highlight(x, y, d.slots);
+    const p = hitPoint(d);
+    highlight(p.x, p.y, d.slots);
   }
 
   function cancelPendingMove(): void {
@@ -159,6 +175,11 @@ export function useDragController(
     const origs = run.map((c) => cardEl(c.id)).filter((x): x is HTMLElement => x !== null);
     if (origs.length !== run.length) return;
 
+    // Hit-test anchor: the HEAD card's center at grab time (client coords).
+    // The card sits at its layout rect here (no transform is applied until
+    // the first move), so anchor + (dx, dy) tracks its visual center exactly.
+    const headRect = cardElLocal.getBoundingClientRect();
+
     // Lift the real cards: disable transitions (instant follow), add the
     // is-dragging class (z-index above the board + own compositor layer).
     origs.forEach((el) => {
@@ -172,6 +193,10 @@ export function useDragController(
       e0: { x: e.clientX, y: e.clientY },
       dx: 0,
       dy: 0,
+      anchor: {
+        x: headRect.left + headRect.width / 2,
+        y: headRect.top + headRect.height / 2,
+      },
       run,
       origs,
       targets: Rules.validDropTargets(state, run),
@@ -188,6 +213,8 @@ export function useDragController(
     e.preventDefault();
   }
 
+  /** Toggle `.drop-ok` on the slot under (x, y) — the drop-candidate point
+   * (head card center), not the pointer. */
   function highlight(x: number, y: number, slots: DragSlot[]) {
     const d = drag.value;
     if (!d) return;
@@ -225,7 +252,8 @@ export function useDragController(
       pendingMove = null;
       d.dx = x - d.e0.x;
       d.dy = y - d.e0.y;
-      highlight(x, y, d.slots);
+      const p = hitPoint(d);
+      highlight(p.x, p.y, d.slots);
     }
     if (d.hoverEl) d.hoverEl.classList.remove('drop-ok');
     d.hoverEl = null;
@@ -309,12 +337,35 @@ export function useDragController(
   useEventListener(window, 'pointermove', onMove);
   useEventListener(window, 'pointerup', onUp);
   useEventListener(window, 'pointercancel', onUp);
-  // Mid-drag scroll (e.g. wheel while holding the mouse button) moves the board
-  // under the pointer and makes the cached slot rects stale. Refresh them only
-  // on actual scrolls — a normal drag stays completely reflow-free.
+  // Mid-drag scrolling is FORBIDDEN: it would shift the board under the card
+  // and stale both the cached slot rects and the center anchor. Block wheel
+  // scrolls for the drag's duration (touch scrolling is already impossible —
+  // the dragged card carries `touch-action: none`).
+  useEventListener(
+    window,
+    'wheel',
+    (e) => {
+      if (drag.value) e.preventDefault();
+    },
+    { passive: false },
+  );
+  // If a scroll still sneaks through (keyboard / programmatic), refresh the
+  // cached slot rects AND re-anchor the head card from a live rect so the hit
+  // test keeps tracking the card's visual position. Otherwise a normal drag
+  // stays completely reflow-free.
   useEventListener(window, 'scroll', () => {
     const d = drag.value;
     if (!d) return;
     for (const s of d.slots) s.rect = s.el.getBoundingClientRect();
+    const head = d.origs[0];
+    if (head?.isConnected) {
+      // Re-anchor to the head card's LAYOUT center (visual center minus the
+      // applied translate). hitPoint() assumes a transform-free anchor, like
+      // at grab time — re-anchoring to the visual center would double-count
+      // the current (dx, dy) and permanently offset every hit after the
+      // scroll by exactly that much.
+      const r = head.getBoundingClientRect();
+      d.anchor = { x: r.left + r.width / 2 - d.dx, y: r.top + r.height / 2 - d.dy };
+    }
   });
 }
