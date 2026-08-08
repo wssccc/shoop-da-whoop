@@ -11,12 +11,11 @@
  * and the `.c-{color}` / `.num|dragon|flower` classes drive the colour rules.
  *
  * `draggable=false` adds `.no-drag` (foundation/flower slots can't be dragged).
- * `dragging=true` adds `.is-dragging` (visibility:hidden) while a drag ghost is
- * flying the real card's slot for FLIP capture (Phase 6).
+ * `dragging=true` adds `.is-dragging` (z-index lift + compositor layer) while
+ * the drag controller carries the real card directly under the pointer.
  */
+import type { CardColor, Card as CardModel } from '@solitaire/game/types';
 import { computed } from 'vue';
-import { motion } from 'motion-v';
-import type { Card as CardModel, CardColor } from '@solitaire/game/types';
 
 const props = defineProps<{
   card: CardModel;
@@ -24,13 +23,6 @@ const props = defineProps<{
   draggable?: boolean;
   /** Hidden but in place; true while dragging this card. */
   dragging?: boolean;
-  /**
-   * Suppress motion-v's layout FLIP while the dealing fly-in runs. The deal
-   * animation drives the REAL cards' inline transform directly (no ghost
-   * clones); with layout active, motion-v would detect the old card-id's
-   * position as the FLIP start and fight the hand-rolled animation.
-   */
-  noLayout?: boolean;
 }>();
 
 const DRAGON_GLYPHS: Record<CardColor, string> = {
@@ -62,12 +54,9 @@ const glyphLabel = computed(() => {
 </script>
 
 <template>
-  <motion.div
+  <div
     :class="rootClass"
     :data-id="card.id"
-    :layout="!noLayout"
-    :layout-id="noLayout ? undefined : `card-${card.id}`"
-    :transition="{ type: 'spring', stiffness: 300, damping: 30 }"
   >
     <div class="corner tl">
       <span v-if="rankLabel" class="rank-num">{{ rankLabel }}</span>
@@ -77,5 +66,5 @@ const glyphLabel = computed(() => {
       <span v-if="rankLabel" class="rank-num">{{ rankLabel }}</span>
       <span v-else class="glyph-small">{{ glyphLabel }}</span>
     </div>
-  </motion.div>
+  </div>
 </template>

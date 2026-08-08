@@ -5,9 +5,8 @@
 // set but nothing consumed it).
 //
 // This version animates the REAL cards with plain CSS transforms — no ghost
-// clones. While justDealt is true every <Card> renders with `noLayout`, which
-// disables motion-v's layout FLIP; with no WAAPI animation in the picture, we
-// own the transform channel outright:
+// clones. There is no competing layout-animation library in the picture, so
+// we own the transform channel outright:
 //
 //   1. watch justDealt → true (set by newGame()); Vue paints the fresh deal.
 //   2. Collect every tableau card's FINAL rect, in dealing order (rounds: all
@@ -19,11 +18,11 @@
 //      last-dealt card — column top — arrives last: natural stack order).
 //   5. When the last flight settles, clean up, then settle auto-moves — the
 //      exposed flower flies to its slot and safe number runs fly to their
-//      foundations, each by snapping the real card back to its dealt spot and
-//      flying it home the same way.
+//      foundations, each via the shared action-unit executor (see
+//      useSolitaireGame.consumeUnit).
 //
-// justDealt stays true through the settle so motion-v never jumps in mid-flow;
-// the watch clears it (finally) once everything has landed.
+// justDealt stays true through the settle so no other animation system can
+// jump in mid-flow; the watch clears it (finally) once everything has landed.
 
 import { nextTick, watch } from 'vue';
 import type { SolitaireGameApi } from './useSolitaireGame';
@@ -33,25 +32,8 @@ const FLY_MS = 260;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 /** Gap between consecutive dealt cards (~40 cards ≈ 1.8s total). */
 const STAGGER_MS = 45;
-/**
- * Auto-settle (auto-move) flight timing — deliberately SLOWER than the deal
- * fly-in: auto-moves read as "cards flying home" and share the same
- * deliberate one-at-a-time cadence as the dragon-collect cascade
- * (useDragonCollect.ts), so every auto-collect scenario feels consistent.
- */
-const AUTO_FLY_MS = 320;
-const AUTO_STAGGER_MS = 200;
-/**
- * Z-index base for auto-moved cards WAITING to fly. While they wait, the
- * moved cards live inside the foundation slot (an absolute stack) and are
- * translate()d back to their tableau spot — DOM order there is REVERSED vs.
- * the column, so we re-order by take-off sequence (see useDragonCollect.ts).
- */
-const AUTO_HOLD_Z_BASE = 5000;
 const COL_COUNT = 8;
 const ROWS = 5;
-const COLORS = ['red', 'black', 'green'] as const;
-type Color = (typeof COLORS)[number];
 
 interface DealCard {
   id: string;
@@ -60,27 +42,49 @@ interface DealCard {
 }
 
 export function useDealing(game: SolitaireGameApi): void {
-  let active = false;
+  /**
+   * Deal generation. Every justDealt→true transition — including a new-game
+   * request made WHILE a deal is already playing (newGame flips the flag
+   * false→true to force the restart) — bumps the generation. A deal captures
+   * its generation at start, and every async boundary (stagger timers, the
+   * settle wait, the auto-move settle) aborts when a newer generation has
+   * superseded it. Without this, a superseded deal's timers would keep
+   * running on the REPLACED board: Vue reuses same-key card elements, so the
+   * old fly/settle callbacks would yank the new board's cards around and the
+   * old settle would strip the new deal's inline styles. Only the newest
+   * generation may clear justDealt.
+   */
+  let gen = 0;
 
   watch(
     game.justDealt,
-    async (dealing) => {
-      if (!dealing || active) return;
-      active = true;
-      try {
-        await deal();
-      } finally {
-        game.justDealt.value = false;
-        active = false;
-      }
+    (dealing) => {
+      if (!dealing) return;
+      const myGen = ++gen;
+      void runDeal(myGen);
     },
     { flush: 'post' },
   );
 
-  async function deal(): Promise<void> {
-    // 1. Let Vue paint the fresh deal (cards at their final positions, motion-v
-    //    layout disabled by noLayout so nothing is mid-FLIP).
-    await nextTick();
+  /** Deal + post-deal settle for ONE generation; superseded generations bail
+   *  at every await boundary and never touch the board again. */
+  async function runDeal(myGen: number): Promise<void> {
+    try {
+      // 1. Let Vue paint the fresh deal (cards at their final positions).
+      await nextTick();
+      if (myGen !== gen) return;
+      await deal(myGen);
+      if (myGen !== gen) return;
+      // Settle safe auto-moves (still under justDealt).
+      await settleAutoMoves(myGen);
+    } finally {
+      // Only the newest generation may end the dealing state — a superseded
+      // one must not cut the new deal short.
+      if (myGen === gen) game.justDealt.value = false;
+    }
+  }
+
+  async function deal(myGen: number): Promise<void> {
 
     // 2. Collect every tableau card's final rect, keyed by column.
     const cols: DealCard[][] = [];
@@ -135,10 +139,12 @@ export function useDealing(game: SolitaireGameApi): void {
     order.forEach(({ el }, i) => {
       const delay = i * STAGGER_MS;
       const fly = () => {
+        if (myGen !== gen) return; // superseded — a newer deal owns the board
         el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
         el.style.transform = '';
         el.style.zIndex = '9000'; // in-flight card above everything else
         setTimeout(() => {
+          if (myGen !== gen) return;
           el.style.zIndex = ''; // landed → back to normal stacking
         }, FLY_MS);
       };
@@ -147,99 +153,24 @@ export function useDealing(game: SolitaireGameApi): void {
     });
 
     // 7. When the last flight settles, strip any leftover inline styles, then
-    //    settle the board's auto-moves (still under justDealt/noLayout).
+    //    settle the board's auto-moves (still under justDealt).
     const settleAt = FLY_MS + order.length * STAGGER_MS + 60;
     await new Promise((r) => setTimeout(r, settleAt));
+    if (myGen !== gen) return; // superseded — don't strip the new deal's styles
     for (const { el } of order) {
       el.style.transition = '';
       el.style.transform = '';
       el.style.zIndex = '';
     }
-    await settleAutoMoves(order);
+    await settleAutoMoves(myGen);
   }
 
-  /** After the deal, collapse safe auto-moves, animating each moved card. */
-  async function settleAutoMoves(order: DealCard[]): Promise<void> {
-    const before = game.state.value;
-    const beforeLen: Record<Color, number> = {
-      red: before.foundations.red.length,
-      black: before.foundations.black.length,
-      green: before.foundations.green.length,
-    };
-    const flowerBefore = before.flowerSlot !== null;
-    const dealRect = new Map(order.map((o) => [o.id, o.rect]));
-
-    game.settleAfterDeal(); // engine.applyAutoMoves() → state change → Vue re-render
-    await nextTick();
-
-    // Diff old vs new to find the auto-moved cards.
-    const st = game.state.value;
-    const moved: Array<{ id: string; target: HTMLElement | null }> = [];
-    for (const c of COLORS) {
-      const f = st.foundations[c];
-      for (let i = beforeLen[c]; i < f.length; i++) {
-        moved.push({ id: f[i].id, target: document.querySelector(`.slot.foundation.c-${c}`) });
-      }
-    }
-    if (!flowerBefore && st.flowerSlot) {
-      moved.push({ id: st.flowerSlot.id, target: document.querySelector('.slot.flower-slot') });
-    }
-    if (moved.length === 0) return;
-
-    // Snap each REAL card back to its dealt spot, then fly it to its slot.
-    // No z-index here — a waiting card keeps its natural stacking until it is
-    // this card's turn to fly.
-    const flying: HTMLElement[] = [];
-    moved.forEach(({ id, target }) => {
-      if (!target) return;
-      const real = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
-      const src = dealRect.get(id);
-      if (!real || !src) return;
-      const t = target.getBoundingClientRect();
-      const dx = t.left + t.width / 2 - (src.left + src.width / 2);
-      const dy = t.top + t.height / 2 - (src.top + src.height / 2);
-      // Card is at t (target). Snap it to src (dealt spot), then fly back.
-      real.style.transition = 'none';
-      real.style.transform = `translate(${-dx}px, ${-dy}px)`;
-      flying.push(real);
-    });
-    void document.body.offsetWidth; // commit the snap as the transition start
-
-    // While they wait, the snapped-back cards sit in the foundation slot's
-    // absolute stack where DOM order puts the LAST mover on top — the
-    // opposite of the column's overlap. Re-z by take-off order so the first
-    // to fly covers the rest, like the original column (see useDragonCollect).
-    flying.forEach((el, i) => {
-      el.style.zIndex = String(AUTO_HOLD_Z_BASE + (flying.length - 1 - i));
-    });
-
-    // Fly them home ONE AT A TIME — `moved` is in engine auto-move order
-    // (lowest rank / outermost first), the same peeling cadence as the
-    // dragon-collect cascade. The z-index lift happens at take-off only and
-    // is cleared on landing. Z mirrors the hold-band reverse (NOT `6000 + i`):
-    // first-take-off keeps the top z so source-column stacking is preserved
-    // mid-flight (a single move can expose several cards from the SAME column,
-    // whose visual overlap would otherwise reverse). See animateAutoMoves.ts.
-    flying.forEach((el, i) => {
-      const delay = i * AUTO_STAGGER_MS;
-      const takeOff = () => {
-        el.style.zIndex = String(6000 + (flying.length - 1 - i));
-        el.style.transition = `transform ${AUTO_FLY_MS}ms ${EASE}`;
-        el.style.transform = '';
-      };
-      if (delay === 0) takeOff();
-      else setTimeout(takeOff, delay);
-      setTimeout(() => {
-        el.style.zIndex = '';
-      }, delay + AUTO_FLY_MS);
-    });
-
-    const maxDelay = (flying.length - 1) * AUTO_STAGGER_MS;
-    await new Promise((r) => setTimeout(r, AUTO_FLY_MS + maxDelay + 60));
-    for (const el of flying) {
-      el.style.transition = '';
-      el.style.transform = '';
-      el.style.zIndex = '';
-    }
+  /** After the deal, settle safe auto-moves through the SAME action-unit
+   *  executor as every other cascade: beginUnit + consumeUnit. Cards fly
+   *  from their dealt spot to flower/foundation one at a time; resolves
+   *  when the last card lands (justDealt stays true until then). */
+  async function settleAutoMoves(myGen: number): Promise<void> {
+    if (myGen !== gen) return;
+    await game.settleAfterDeal(); // executor consumes the cascade (win check inside)
   }
 }

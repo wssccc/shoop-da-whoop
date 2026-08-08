@@ -1,121 +1,153 @@
-// Shared flight for "auto-moved" cards — the flower and safe foundation runs
-// the engine collapses after a user move (engine.applyAutoMoves). All three
-// auto-collect paths share the SAME slow one-at-a-time cadence:
-//   - useDragonCollect (收龙 cascade),
-//   - useDealing.settleAutoMoves (post-deal collapse),
-//   - moveCard in useSolitaireGame (this module — cards re-rendered into the
-//     foundation slot by Vue, snapped back to their source spot, then flown
-//     home one at a time instead of motion-v's instant layout FLIP).
+// Single-card flight — the ONLY animation primitive the action-unit executor
+// needs. Every "cards fly home" animation (收龙, the post-move cascade, the
+// post-deal settle) is now generated + applied by the ENGINE one step at a
+// time (beginUnit / stepUnit / endUnit — see engine.ts): each step moves one
+// card, the executor animates that one card with a single FLIP tween, then
+// asks for the next step. Data and display stay in lockstep — a card is
+// never committed to its destination before its own animation starts, so
+// nothing can "vanish" while other cards fly.
 //
-// Timing constants deliberately mirror useDragonCollect so every cascade
-// reads consistently: 320ms flight, 200ms between take-offs.
+// (The previous commit-then-fly machinery — flyCardsHome / prepareFlight /
+// launchFlight / peelOrder / the HOLD/TAKE_OFF z-bands — is gone. Multiple
+// cards still overlap in flight via the interleaved cadence below, each
+// lifting to IN_FLIGHT_Z at take-off and clearing on landing.)
 
-import { nextTick } from 'vue';
-
-export const AUTO_FLY_MS = 320;
-export const AUTO_STAGGER_MS = 200;
-/**
- * Z-index base for auto-moved cards WAITING to fly. While they wait, the
- * moved cards live inside the destination slot (an absolute stack) and are
- * translate()d back to their source spot — DOM order there is REVERSED vs.
- * the source column, so we re-order by take-off sequence (see the identical
- * HOLD_Z_BASE in useDragonCollect.ts). Take-off lifts them to 6000+i, well
- * above this band.
- */
-export const AUTO_HOLD_Z_BASE = 5000;
+export const FLY_MS = 320;
+/** Gap between consecutive take-offs (the interleave in the executor loop). */
+export const STAGGER_MS = 200;
 export const AUTO_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+/** Z while a card is airborne (above the whole board, below the overlays). */
+export const IN_FLIGHT_Z = 9000;
+/**
+ * Lift for the destination pile's OUTER stacking context (`.flip-scene`)
+ * while a card flies INTO it. The flying card's z=9000 lives INSIDE the
+ * pile's stacking-context chain (perspective → transform → backface), so the
+ * root context only ever sees the pile itself — which sits at z:auto and
+ * loses to any LATER sibling pile (a sealed dragon pile showing its card
+ * back, see `solitaire-dragon-pile-back`): the flying card gets covered by
+ * another pile's card back.
+ *
+ * Lifting the pile to 1 (NOT 9001) is enough: 1 already beats sibling piles'
+ * auto=0, and 9001 would bury the root-level z=9000 cascade/deal cards (the
+ * pile is only required to win against OTHER piles, not against root-level
+ * flying cards). Cleared when the last in-flight card lands — static state
+ * (a boot-restored pile) never carries an inline z-index.
+ */
+export const PILE_LIFT_Z = 1;
 
-export interface AutoMoveTarget {
-  id: string;
-  /** Destination slot element (foundation / flower-slot). */
-  target: HTMLElement | null;
+/**
+ * Active in-flight lift counts per `.flip-scene`. Interleaved take-offs
+ * overlap (a later card takes off while the previous one is still airborne),
+ * so each flight increments and each landing decrements; the inline z-index
+ * is only written on 0→1 and cleared on 1→0.
+ */
+const pileLiftCounts = new Map<HTMLElement, number>();
+
+/**
+ * Extra time the destination pile's z-lift is held after the LAST card of a
+ * SEALED pile (flipped) lands. The seal flip runs from flipped-class time
+ * (delay 0.4s + 0.8s transition = 1.2s — see index.css .flip-card.flipped);
+ * the flight lands at 0.38s. Clearing the pile's z-index (a compositor
+ * layer re-org) inside that window — or exactly at its end — lets mobile
+ * GPUs glitch the just-revealed card back (a one-frame flash of the front
+ * face). Holding the lift past the flip's end keeps the layer re-org away
+ * from the reveal. Harmless while held: z=1 only beats sibling piles
+ * (positioned apart) and loses to root-level z=9000 flying cards.
+ */
+export const SEAL_Z_HOLD_MS = 1200;
+
+function liftPile(el: HTMLElement): void {
+  const scene = el.closest<HTMLElement>('.flip-scene');
+  if (!scene) return; // not flying into a dragon pile — nothing to lift
+  const n = (pileLiftCounts.get(scene) ?? 0) + 1;
+  pileLiftCounts.set(scene, n);
+  if (n === 1) scene.style.zIndex = String(PILE_LIFT_Z);
 }
 
-/** Snapshot every visible card's rect — the "source" of the upcoming flight. */
-export function snapshotCardRects(): Map<string, DOMRect> {
-  const rects = new Map<string, DOMRect>();
-  for (const el of document.querySelectorAll<HTMLElement>('.card')) {
-    const id = el.dataset.id;
-    if (id) rects.set(id, el.getBoundingClientRect());
+function dropPile(el: HTMLElement): void {
+  const scene = el.closest<HTMLElement>('.flip-scene');
+  if (!scene) return;
+  const n = (pileLiftCounts.get(scene) ?? 0) - 1;
+  if (n <= 0) {
+    pileLiftCounts.delete(scene);
+    scene.style.zIndex = '';
+  } else {
+    pileLiftCounts.set(scene, n);
   }
-  return rects;
+}
+/**
+ * Duration of the drag-drop settle tween — ALSO the delay before the
+ * action-unit executor starts consuming the post-move cascade, so the
+ * dropped run's settle never races the cascade's first step. Single source
+ * of truth for both (previously 240ms, unified to 250ms).
+ */
+export const FLIP_SETTLE_MS = 250;
+
+/**
+ * Fly ONE real card from where it currently renders (`fromRect`) to its
+ * destination slot with a single FLIP tween.
+ *
+ * The card has already been committed + re-rendered into the destination
+ * slot (the executor called engine.stepUnit() and awaited nextTick), so it
+ * sits at the target spot: snap it back to `fromRect` with transition:none
+ * (one forced recalc commits the snap as the transition's start value),
+ * then ease it home. z lifts to IN_FLIGHT_Z at take-off and clears on
+ * landing — later steps may take off while this card is still airborne.
+ *
+ * The caller does NOT need to await the full flight; the executor starts the
+ * next step after STAGGER_MS (see useSolitaireGame.consumeUnit).
+ */
+export async function flyCardTo(
+  el: HTMLElement,
+  fromRect: DOMRect,
+  targetEl: HTMLElement,
+): Promise<void> {
+  return flip(el, fromRect, targetEl.getBoundingClientRect());
 }
 
 /**
- * Fly auto-moved cards from their source spot to their destination slot, ONE
- * AT A TIME. Caller must have disabled motion-v layout on these cards (e.g.
- * via `autoMovingIds`) so we own their transform channel.
+ * FLIP one card from its source rect to wherever it renders NOW — the card
+ * must already be re-rendered into its final position. Unlike flyCardTo this
+ * targets the card's own rect, so it also works when the destination is a
+ * tableau column (the column slot's rect centre ≠ the card's stacked spot).
+ * Used by the hint executor's animated user move.
  */
-export async function flyAutoMovedCards(
-  entries: AutoMoveTarget[],
-  srcRects: Map<string, DOMRect>,
+export async function flyCardHome(
+  el: HTMLElement,
+  fromRect: DOMRect,
 ): Promise<void> {
-  if (entries.length === 0) return;
-  await nextTick(); // Vue has re-rendered the moved cards into their slots
+  return flip(el, fromRect, el.getBoundingClientRect());
+}
 
-  // Snap each REAL card back to its source spot (transition start). No
-  // z-index here — a waiting card keeps its natural stacking until its turn.
-  const flying: HTMLElement[] = [];
-  entries.forEach(({ id, target }) => {
-    if (!target) return;
-    const real = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
-    const src = srcRects.get(id);
-    if (!real || !src) return;
-    const t = target.getBoundingClientRect();
-    const dx = t.left + t.width / 2 - (src.left + src.width / 2);
-    const dy = t.top + t.height / 2 - (src.top + src.height / 2);
-    // Card is at t (target). Snap it to src (source spot), then fly back.
-    real.style.transition = 'none';
-    real.style.transform = `translate(${-dx}px, ${-dy}px)`;
-    flying.push(real);
-  });
+/** Shared FLIP tween core: snap the card back to `fromRect`, lift it above
+ *  the board, ease it to `toRect`, then clean up the inline styles. */
+async function flip(
+  el: HTMLElement,
+  fromRect: DOMRect,
+  toRect: DOMRect,
+): Promise<void> {
+  const dx = toRect.left + toRect.width / 2 - (fromRect.left + fromRect.width / 2);
+  const dy = toRect.top + toRect.height / 2 - (fromRect.top + fromRect.height / 2);
+  el.style.transition = 'none';
+  el.style.transform = `translate(${-dx}px, ${-dy}px)`;
   void document.body.offsetWidth; // commit the snap as the transition start
-
-  // While waiting, the cards sit in the destination slot's absolute stack,
-  // where DOM order puts the LAST mover on top — the opposite of the source
-  // column's overlap. Re-z by take-off order so the first to fly covers the
-  // rest, like the original column.
-  flying.forEach((el, i) => {
-    el.style.zIndex = String(AUTO_HOLD_Z_BASE + (flying.length - 1 - i));
-  });
-
-  // Fly them home ONE AT A TIME — `entries` is in engine auto-move order
-  // (lowest rank / outermost first). The z-index lift happens at take-off
-  // only and is cleared on landing.
-  //
-  // STACKING ORDER IN FLIGHT MUST MIRROR THE SOURCE COLUMN, not the destination
-  // foundation. Because tableau cards cascade in descending-alt-colour stacks,
-  // a single move can expose several cards in ONE column (e.g. ...black-7,
-  // red-6) which now both fly home. In the source column the lower rank (red-6)
-  // was visually ON TOP of the higher one (black-7). If we lifted z by
-  // `6000 + i` (later take-off = higher z), the later-take-off card would
-  // pop ABOVE the earlier one mid-flight and visibly reverse the source
-  // stacking — exactly the "叠放顺序会混乱" symptom. We mirror the hold-band
-  // formula `base + (flying.length - 1 - i)` so the first-to-take-off card
-  // (lowest rank, source-top among cross-/same-source peers) keeps the highest
-  // z throughout flight. Landing clears z one at a time, after which the
-  // foundation slot's natural DOM order takes over (later-pushed = higher) and
-  // ends with the correct top card — see memories/solitaire-overlay-zindex-stack.md
-  // for the same reverse-index reasoning used during the hold phase.
-  flying.forEach((el, i) => {
-    const delay = i * AUTO_STAGGER_MS;
-    const takeOff = () => {
-      el.style.zIndex = String(6000 + (flying.length - 1 - i));
-      el.style.transition = `transform ${AUTO_FLY_MS}ms ${AUTO_EASE}`;
-      el.style.transform = '';
-    };
-    if (delay === 0) takeOff();
-    else setTimeout(takeOff, delay);
-    setTimeout(() => {
-      el.style.zIndex = '';
-    }, delay + AUTO_FLY_MS);
-  });
-
-  const maxDelay = (flying.length - 1) * AUTO_STAGGER_MS;
-  await new Promise((r) => setTimeout(r, AUTO_FLY_MS + maxDelay + 60));
-  for (const el of flying) {
-    el.style.transition = '';
-    el.style.transform = '';
-    el.style.zIndex = '';
+  el.style.zIndex = String(IN_FLIGHT_Z);
+  liftPile(el); // flying INTO a dragon pile — lift the pile above sibling piles
+  // Is this the seal flip's last card (the pile is complete)? Its z-lift must
+  // outlive the flip — see SEAL_Z_HOLD_MS.
+  const sealed =
+    el.closest<HTMLElement>('.flip-card')?.classList.contains('flipped') ?? false;
+  el.style.transition = `transform ${FLY_MS}ms ${AUTO_EASE}`;
+  el.style.transform = '';
+  await new Promise((r) => setTimeout(r, FLY_MS + 60));
+  el.style.transition = '';
+  el.style.transform = '';
+  el.style.zIndex = '';
+  if (sealed) {
+    // Keep the pile's lift past the seal flip's end (0.4s delay + 0.8s
+    // transition), so the z-clear (compositor re-org) never coincides with
+    // the just-revealed card back — mobile GPUs can flash the front face.
+    await new Promise((r) => setTimeout(r, SEAL_Z_HOLD_MS));
   }
+  dropPile(el); // last card of this pile landed — restore the static z
 }

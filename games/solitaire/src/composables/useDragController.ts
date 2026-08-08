@@ -1,7 +1,7 @@
 // Pointer-based drag controller. Carries the REAL cards directly under the
 // pointer (inline transform — no cloned ghost), hit-tests slot targets via
 // manual rect tests (NOT elementFromPoint), and commits to game.moveCard() on
-// release (or reverts with an error sound + return FLIP).
+// release (or reverts with an error sound + settle-back tween).
 //
 // 1:1 port of the original input.js DragController, wired to VueUse's
 // `useEventListener` so listeners auto-teardown on component unmount. See
@@ -10,13 +10,25 @@
 import * as Rules from '@solitaire/game/rules';
 import type { Card, CardColor, DestDescriptor } from '@solitaire/game/types';
 import { useEventListener } from '@vueuse/core';
-import { ref, type Ref } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
+import { FLIP_SETTLE_MS } from './animateAutoMoves';
 import { Audio } from './useAudio';
 import type { SolitaireGameApi } from './useSolitaireGame';
 
 /** Shared FLIP duration/easing (matches the original anim.js constants). */
-export const FLIP_MS = 240;
+export const FLIP_MS = FLIP_SETTLE_MS; // 250 — also the executor's consume delay
 export const FLIP_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+/** A drop target captured at drag start: element + its layout rect. */
+interface DragSlot {
+  el: HTMLElement;
+  /** Rect cached at pointerdown. Mid-drag the board layout is static — cards
+   * travel via transform only, so nothing moves in layout space. Reading the
+   * live rect every pointermove would force a synchronous style+layout flush
+   * right after the park-transform write dirtied them (a forced reflow per
+   * frame). Caching kills that; an actual scroll (rare mid-drag) refreshes it. */
+  rect: DOMRect;
+}
 
 interface DragState {
   e0: { x: number; y: number };
@@ -26,7 +38,7 @@ interface DragState {
   origs: HTMLElement[];
   targets: DestDescriptor[];
   /** Drop targets captured once per drag — the board DOM is stable mid-drag. */
-  slots: HTMLElement[];
+  slots: DragSlot[];
   hover: DestDescriptor | null;
   /** The slot element currently showing `.drop-ok`, or null. */
   hoverEl: HTMLElement | null;
@@ -48,17 +60,18 @@ function parseSlot(str: string | null | undefined): DestDescriptor | null {
  *
  * We manually test the point against every slot's getBoundingClientRect()
  * instead of calling document.elementFromPoint(). The drag pipeline elsewhere
- * (ghost positioning, FLIP) all speak the layout-viewport CSS-pixel language,
- * so matching against that same API keeps every coordinate source consistent.
- * elementFromPoint() under page zoom / ancestor transforms drifts out of sync.
+ * (park positioning, settle tweens) all speak the layout-viewport CSS-pixel
+ * language, so matching against that same API keeps every coordinate source
+ * consistent. elementFromPoint() under page zoom / ancestor transforms drifts
+ * out of sync.
  *
  * `slots` is captured once per drag (see DragState.slots) so we never re-query
  * the selector on every pointermove.
  */
-function slotAtPoint(x: number, y: number, slots: HTMLElement[]): HTMLElement | null {
+function slotAtPoint(x: number, y: number, slots: DragSlot[]): HTMLElement | null {
   for (const s of slots) {
-    const r = s.getBoundingClientRect();
-    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return s;
+    const r = s.rect;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return s.el;
   }
   return null;
 }
@@ -95,7 +108,7 @@ export function useDragController(
     // The REAL cards follow the pointer directly (transition:none, so this is
     // instant and per-frame smooth). `.is-dragging { will-change: transform }`
     // keeps them on compositor layers. Same translate() matrix the original
-    // used — motion-v's projection subtracts it exactly when measuring.
+    // used — the settle tweens later measure from exactly this offset.
     for (const el of d.origs) el.style.transform = `translate(${dx}px, ${dy}px)`;
     highlight(x, y, d.slots);
   }
@@ -115,12 +128,10 @@ export function useDragController(
   function onDown(e: PointerEvent) {
     // Ignore input while the dealing fly-in (or its auto-move settle) runs —
     // cards are mid-transform and the board state is about to change anyway.
-    // Also block while a user-move-triggered auto-cascade is still flying
-    // (autoMovingIds). snapshotCardRects() in moveCard samples DOM positions
-    // synchronously; starting a new move mid-flight would grab stale rects of
-    // the in-flight cards and let the second cascade fight the first over the
-    // same transform channel — leaving cards stuck or visually invisible.
-    if (game.justDealt.value || game.collecting.value || game.autoMovingIds.value.length > 0) return;
+    // Also block while an action unit is being consumed (收龙 / post-move
+    // cascade): the board state settles step by step, and starting a new
+    // drag mid-consumption would read stale positions.
+    if (game.justDealt.value || game.busy.value) return;
     const target = e.target as HTMLElement;
     const cardElLocal = target.closest<HTMLElement>('.card');
     if (!cardElLocal || cardElLocal.classList.contains('no-drag')) return;
@@ -164,7 +175,12 @@ export function useDragController(
       run,
       origs,
       targets: Rules.validDropTargets(state, run),
-      slots: Array.from(document.querySelectorAll<HTMLElement>('#board [data-slot]')),
+      // Capture element + layout rect in one pass — the board layout cannot
+      // change mid-drag (cards move via transform only), so these stay valid
+      // until release (or a scroll, which refreshes them).
+      slots: Array.from(document.querySelectorAll<HTMLElement>('#board [data-slot]')).map(
+        (el) => ({ el, rect: el.getBoundingClientRect() }),
+      ),
       hover: null,
       hoverEl: null,
     };
@@ -172,7 +188,7 @@ export function useDragController(
     e.preventDefault();
   }
 
-  function highlight(x: number, y: number, slots: HTMLElement[]) {
+  function highlight(x: number, y: number, slots: DragSlot[]) {
     const d = drag.value;
     if (!d) return;
     const slot = slotAtPoint(x, y, slots);
@@ -215,8 +231,8 @@ export function useDragController(
     d.hoverEl = null;
 
     // The cards already sit at the release point (their transform followed
-    // the pointer). Just drop the drag styles and settle the move. motion-v's
-    // <motion.div layout> FLIPs from this parked position on commit.
+    // the pointer). Just drop the drag styles and settle the move — the
+    // settle-into tween below starts from this parked position on commit.
     const dx = d.dx;
     const dy = d.dy;
     for (const el of d.origs) {
@@ -232,10 +248,28 @@ export function useDragController(
       if (!committed) Audio.error();
     }
     if (committed) {
-      // Scrub the park styles once the FLIP spring has fully settled, so a
-      // stale inline transform can't shift the next drag's ghost origin.
+      // Settle-into: the cards keep their parked translate() while Vue
+      // re-renders them at the destination slot (v-for key reuse keeps the
+      // elements, so the inline transform survives the move). Once the DOM
+      // sits in its final layout, ease each card from the parked position to
+      // its final one with a single CSS transition. (The engine's auto-move
+      // cascade — if any — is consumed by the action-unit executor, which
+      // starts only after this settle finishes.)
+      void nextTick().then(() => {
+        for (const el of d.origs) {
+          if (!el.isConnected) continue; // undo / new-game raced the settle
+          void el.offsetWidth; // commit parked transform as the tween's start value
+          el.style.transition = `transform ${FLIP_MS}ms ${FLIP_EASE}`;
+          el.style.transform = '';
+        }
+      });
+      // Scrub inline styles once the settle tween has finished, so a stale
+      // inline transform can't shift the next drag's park origin. Skip any
+      // element a NEW drag has already taken over (is-dragging) — scrubbing
+      // mid-drag would wipe its follow transform for a frame.
       setTimeout(() => {
         for (const el of d.origs) {
+          if (el.classList.contains('is-dragging')) continue;
           el.style.transition = '';
           el.style.transform = '';
         }
@@ -263,6 +297,7 @@ export function useDragController(
     });
     setTimeout(() => {
       for (const el of origs) {
+        if (el.classList.contains('is-dragging')) continue; // new drag owns it now
         el.style.transition = '';
         el.style.transform = '';
       }
@@ -274,4 +309,12 @@ export function useDragController(
   useEventListener(window, 'pointermove', onMove);
   useEventListener(window, 'pointerup', onUp);
   useEventListener(window, 'pointercancel', onUp);
+  // Mid-drag scroll (e.g. wheel while holding the mouse button) moves the board
+  // under the pointer and makes the cached slot rects stale. Refresh them only
+  // on actual scrolls — a normal drag stays completely reflow-free.
+  useEventListener(window, 'scroll', () => {
+    const d = drag.value;
+    if (!d) return;
+    for (const s of d.slots) s.rect = s.el.getBoundingClientRect();
+  });
 }

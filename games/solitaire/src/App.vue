@@ -13,20 +13,33 @@
  * via the `#board` ref.
  */
 import Card from '@solitaire/components/Card.vue';
-import { FREE_CELL_COUNT, TABLEAU_COLS } from '@solitaire/game/constants';
+import CardBack from '@solitaire/components/CardBack.vue';
+import GlyphIcon from '@solitaire/components/GlyphIcon.vue';
+import Toaster from '@solitaire/components/Toaster.vue';
+import WinCard from '@solitaire/components/WinCard.vue';
+import {
+  DRAGON_COUNT_PER_COLOR,
+  FREE_CELL_COUNT,
+  TABLEAU_COLS,
+} from '@solitaire/game/constants';
 import type {
-    CardColor,
-    Card as CardModel,
-    FreeCell,
+  CardColor,
+  Card as CardModel,
+  FreeCell,
 } from '@solitaire/game/types';
 import { useFullscreen } from '@vueuse/core';
-import { AnimatePresence, motion } from 'motion-v';
-import { ref, shallowReadonly } from 'vue';
+import {
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+  DialogRoot,
+  DialogTitle,
+} from 'reka-ui';
+import { computed, ref, shallowReadonly, watch } from 'vue';
 import { useAchievements } from './composables/useAchievements';
 import { useAudio } from './composables/useAudio';
 import { useDealing } from './composables/useDealing';
 import { useDragController } from './composables/useDragController';
-import { useDragonCollect } from './composables/useDragonCollect';
 import { useHint } from './composables/useHint';
 import { useSolitaireGame } from './composables/useSolitaireGame';
 
@@ -37,7 +50,8 @@ useAudio();
 
 const game = useSolitaireGame();
 const hint = useHint(game);
-const achievements = useAchievements(game.wins);
+// Side-effect only: watches the win counter and pushes achievement toasts.
+useAchievements(game.wins);
 const { toggle: toggleFullscreen } = useFullscreen();
 
 // Drag (board-level pointerdelegation). No per-card pointer handler needed.
@@ -59,6 +73,59 @@ function isCard(cell: FreeCell): cell is CardModel {
 }
 function isDragonPile(cell: FreeCell) {
   return cell !== null && cell.type === 'dragonpile';
+}
+
+/**
+ * Per-slot dragon-pile card counts — re-evaluates on every publish (the
+ * shallowReadonly top-level state object is replaced per engine step, so a
+ * pile going 3→4 IS a change). Used to fire the seal-flip's rotateX tilt
+ * animation ONLY when the pile actually completes in play — a boot-restored
+ * pile is already 4 on first render, so no watch callback runs and the
+ * flipped card-back appears statically (no tilt tween on restore).
+ */
+const pileCounts = computed(() =>
+    state.value.freeCells.map((c) =>
+        c !== null && c.type === 'dragonpile' ? c.cards.length : -1,
+    ),
+);
+/** Free-cell indices whose pile JUST filled (4 dragons) — drives `.playing`.
+ *  Removed on animationend. */
+const sealPlaying = ref(new Set<number>());
+watch(pileCounts, (now, prev) => {
+    const next = new Set(sealPlaying.value);
+    now.forEach((len, i) => {
+        const was = prev?.[i] ?? -1;
+        if (len === DRAGON_COUNT_PER_COLOR && was !== DRAGON_COUNT_PER_COLOR) {
+            next.add(i);
+        }
+    });
+    sealPlaying.value = next;
+});
+/** Animation finished (or cancelled) — release the tilt trigger. */
+function onSealTiltEnd(i: number) {
+    const next = new Set(sealPlaying.value);
+    next.delete(i);
+    sealPlaying.value = next;
+}
+
+/**
+ * The seal flip's rotateY transition finished — hide the front face
+ * outright (inline), so the revealed card back never depends on
+ * backface-visibility ALONE: iOS Safari flattens the 3D chain (backface
+ * gives out) and mobile GPUs can glitch the composite around the flip
+ * (a one-frame flash of the front face). The inline visibility:hidden is
+ * precise (fires exactly when the flip lands, unlike the CSS 1.2s delay
+ * fallback in index.css which races the transition end) and harmless when
+ * backface-visibility works (the front is already hidden by it).
+ *
+ * Guard: only the flip-card's OWN transform transition counts — flying
+ * cards' transform transitions bubble up from `.face.front .card`.
+ */
+function onFlipCardEnd(e: TransitionEvent) {
+    if (e.propertyName !== 'transform') return;
+    if (e.target !== e.currentTarget) return;
+    const front = (e.currentTarget as HTMLElement).querySelector('.face.front');
+    if (front) (front as HTMLElement).style.visibility = 'hidden';
 }
 
 /** New-game confirmation: a mis-click on 新局 would wipe the current board,
@@ -89,20 +156,23 @@ function onUndo() {
 function onMuteToggle() {
   game.toggleMute();
 }
-const onCollectDragons = useDragonCollect(game);
+/** 收龙: begins a 收龙 unit — the executor animates each dragon + cascade step. */
+function onCollectDragons() {
+  game.collectDragons();
+}
 </script>
 
 <template>
   <main
     :ref="(el) => (boardRef = el as HTMLElement | null)"
     id="board"
-    class="board"
+    class="board max-w-[920px] mx-auto mb-10 px-[14px] touch-none"
   >
     <div class="game-layout">
       <!-- Toolbar -->
       <header class="side-panel toolbar-panel">
         <div class="brand">
-          <span class="brand-glyph">龍</span>
+          <span class="brand-glyph">🃏</span>
           <h1>纸牌接龙</h1>
         </div>
         <nav class="controls">
@@ -114,22 +184,26 @@ const onCollectDragons = useDragonCollect(game);
           <button
             type="button"
             title="撤销"
-            :disabled="!game.canUndo.value || game.autoMovingIds.value.length > 0"
+            :disabled="!game.canUndo.value || game.busy.value"
             @click="onUndo"
           >↶ 撤销</button>
           <button
             class="btn-hint"
             type="button"
-            :title="hint.solving.value ? '求解中…' : '💡 提示一步（自动执行当前局面解的第一步）'"
-            :disabled="hint.solving.value || game.won.value || game.justDealt.value || game.autoMovingIds.value.length > 0"
+            :title="hint.solving.value ? '求解中…' : '提示一步（自动执行当前局面解的第一步）'"
+            :disabled="hint.solving.value || game.won.value || game.justDealt.value || game.busy.value"
             @click="hint.hintOnce()"
-          >{{ hint.solving.value ? '⏳' : '💡' }}</button>
+          >
+            <GlyphIcon :name="hint.solving.value ? 'hourglass' : 'hint'" :size="16" />
+          </button>
           <button
             class="btn-mute"
             type="button"
             title="静音"
             @click="onMuteToggle"
-          >{{ game.muted.value ? '🔇' : '🔊' }}</button>
+          >
+            <GlyphIcon :name="game.muted.value ? 'muted' : 'sound'" :size="16" />
+          </button>
           <button
             class="btn-fullscreen"
             type="button"
@@ -159,14 +233,55 @@ const onCollectDragons = useDragonCollect(game);
                 v-if="isCard(state.freeCells[i])"
                 :card="state.freeCells[i] as CardModel"
                 :draggable="true"
-                :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes((state.freeCells[i] as CardModel).id)"
               />
+              <!-- Locked dragon pile: render the REAL dragon cards (all four,
+                   stacked at the slot origin) so the 收龙 flight can snap them
+                   back to their columns and fly them home — the same
+                   commit-then-fly playback as every other auto-collect path.
+                   Once the pile is complete (`cards.length === DRAGON_COUNT_PER_COLOR`)
+                   the flip-card turns 180° and the pile reads as ONE card back
+                   (CardBack) — the dragon pile is sealed. The flip is
+                   data-driven, so an undo (pile vanishes / shrinks) reverts it
+                   automatically; `.slot.locked` keeps the per-colour frame. -->
               <div
                 v-else-if="isDragonPile(state.freeCells[i])"
                 class="locked-dragons"
                 :class="`c-${state.freeCells[i]!.color}`"
               >
-                🐉<span class="lock">🔒</span>
+                <div class="flip-scene">
+                  <!-- Tilt shell: rotateX lift-and-put-down envelope around
+                       the rotateY flip. Fired by the watch on pile completion
+                       (sealPlaying) — NOT by the flipped class, so a
+                       boot-restored pile (already 4 on first render) stays
+                       static. animationend clears the trigger. -->
+                  <div
+                    class="flip-tilt"
+                    :class="{ playing: sealPlaying.has(i) }"
+                    @animationend="onSealTiltEnd(i)"
+                  >
+                    <div
+                      class="flip-card"
+                      :class="{
+                        flipped:
+                          state.freeCells[i]!.cards.length ===
+                          DRAGON_COUNT_PER_COLOR,
+                      }"
+                      @transitionend="onFlipCardEnd"
+                    >
+                      <div class="face front">
+                        <Card
+                          v-for="card in state.freeCells[i]!.cards"
+                          :key="card.id"
+                          :card="card"
+                          :draggable="false"
+                        />
+                      </div>
+                      <div class="face back">
+                        <CardBack />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -176,10 +291,10 @@ const onCollectDragons = useDragonCollect(game);
             :data-color="game.dragonReadyColor.value ?? ''"
             type="button"
             title="收"
-            :disabled="game.collecting.value || game.dragonReadyColor.value === null"
+            :disabled="game.busy.value || game.dragonReadyColor.value === null"
             @click="onCollectDragons"
           >
-            <span class="glyph">🐉</span><span class="lbl">收</span>
+            <span class="glyph">🐉</span>
           </button>
         </div>
       </aside>
@@ -200,7 +315,6 @@ const onCollectDragons = useDragonCollect(game);
                 :key="card.id"
                 :card="card"
                 :draggable="false"
-                :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(card.id)"
               />
             </div>
           </div>
@@ -214,18 +328,18 @@ const onCollectDragons = useDragonCollect(game);
             v-if="state.flowerSlot"
             :card="state.flowerSlot"
             :draggable="false"
-            :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(state.flowerSlot.id)"
           />
         </div>
       </aside>
 
-      <!-- Tableau: 8 columns of stacked cards -->
+      <!-- Tableau: 8 columns of stacked cards. WinCard overlays the (now
+           empty) tableau region — no modal, the rest of the board stays
+           visible and interactive. -->
       <section class="tableau">
         <div
           v-for="i in tableauIndices"
           :key="`col-${i}`"
           class="slot col"
-          :class="{ empty: state.tableau[i].length === 0 }"
           :data-slot="`col-${i}`"
         >
           <Card
@@ -233,31 +347,28 @@ const onCollectDragons = useDragonCollect(game);
             :key="card.id"
             :card="card"
             :draggable="true"
-            :no-layout="game.justDealt.value || game.collecting.value || game.autoMovingIds.value.includes(card.id)"
           />
         </div>
+        <!-- Victory emblem: replaces the win dialog (agreed design — see
+             WinCard.vue). `won` gates it exactly like the old dialog, so it
+             still appears only after the last collect-flight lands. -->
+        <WinCard v-if="game.won.value" :game="game" />
       </section>
 
-      <span class="side-label lbl-left">空闲 + 龙牌</span>
-      <span class="side-label lbl-right">终局 + 花牌</span>
+      <span class="side-label">空闲 + 龙牌</span>
+      <span class="side-label">终局 + 花牌</span>
     </div>
   </main>
 
-  <!-- New-game confirmation. Single motion layer (the overlay itself fades) so
-       AnimatePresence's exit finishes in one short tween — nesting a second
-       motion layer here made the dialog linger ~600ms after cancel/confirm. -->
-  <AnimatePresence>
-    <motion.div
-      v-if="showNewGameConfirm"
-      class="overlay newgame-overlay"
-      :initial="{ opacity: 0 }"
-      :animate="{ opacity: 1 }"
-      :exit="{ opacity: 0 }"
-      :transition="{ duration: 0.15 }"
-    >
-      <div class="overlay-card newgame-card">
+  <!-- New-game confirmation (reka-ui Dialog: overlay click / Escape close,
+       focus trap + aria — full defaults). Enter/exit run off data-state
+       CSS animations, see index.css. -->
+  <DialogRoot v-model:open="showNewGameConfirm">
+    <DialogPortal>
+      <DialogOverlay class="overlay newgame-overlay" />
+      <DialogContent class="overlay-card newgame-card dialog-content">
         <div class="overlay-glyph">⟳</div>
-        <h2>开始新局？</h2>
+        <DialogTitle class="dialog-title">开始新局？</DialogTitle>
         <p>当前棋局的进度将会被丢弃。</p>
         <div class="dialog-actions">
           <button
@@ -272,67 +383,10 @@ const onCollectDragons = useDragonCollect(game);
             @click="confirmNewGame"
           >确定</button>
         </div>
-      </div>
-    </motion.div>
-  </AnimatePresence>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
 
-  <!-- Win overlay (AnimatePresence handles fade + spring-scale). -->
-  <AnimatePresence>
-    <motion.div
-      v-if="game.won.value"
-      class="overlay"
-      :initial="{ opacity: 0 }"
-      :animate="{ opacity: 1 }"
-      :exit="{ opacity: 0 }"
-      :transition="{ duration: 0.2 }"
-    >
-      <motion.div
-        class="overlay-card win-card"
-        :initial="{ scale: 0.85, opacity: 0 }"
-        :animate="{ scale: 1, opacity: 1 }"
-        :exit="{ scale: 0.85, opacity: 0 }"
-        :transition="{ type: 'spring', stiffness: 200, damping: 20 }"
-      >
-        <div class="overlay-glyph">☯</div>
-        <h2>恭喜通关</h2>
-        <p>累计胜局 <strong>{{ game.wins.value }}</strong> 局</p>
-        <button
-          type="button"
-          @click="askNewGame"
-        >再来一局</button>
-      </motion.div>
-    </motion.div>
-  </AnimatePresence>
-
-  <!-- Toasts (AnimatePresence stack; each auto-dismisses after 3.2s). -->
-  <div
-    class="toasts"
-    aria-live="polite"
-  >
-    <AnimatePresence>
-      <motion.div
-        v-for="t in achievements.toasts.value"
-        :key="t.key"
-        class="toast"
-        :initial="{ opacity: 0, y: 10 }"
-        :animate="{ opacity: 1, y: 0 }"
-        :exit="{ opacity: 0, y: -6 }"
-        :transition="{ duration: 0.25 }"
-      >
-        {{ t.achievement.name }}
-      </motion.div>
-    </AnimatePresence>
-    <AnimatePresence>
-      <motion.div
-        v-if="hint.hintMsg.value"
-        class="toast hint-toast"
-        :initial="{ opacity: 0, y: 10 }"
-        :animate="{ opacity: 1, y: 0 }"
-        :exit="{ opacity: 0, y: -6 }"
-        :transition="{ duration: 0.25 }"
-      >
-        {{ hint.hintMsg.value }}
-      </motion.div>
-    </AnimatePresence>
-  </div>
+  <!-- Toasts (reka-ui Toast, imperative store — see lib/toaster.ts). -->
+  <Toaster />
 </template>

@@ -13,10 +13,10 @@ import tailwindcss from 'tailwindcss';
 
 export default {
   plugins: [
-    // Tailwind handles the Othello stylesheet (`@tailwind` directives in
-    // games/othello/src/index.css). CSS without `@tailwind` is passed through
-    // untouched, so home / solitaire / 1a2b styles are unaffected. Run it
-    // first so postcss-preset-env can downgrade its output for legacy browsers.
+    // Tailwind handles every stylesheet that opts in via `@tailwind` directives
+    // (othello + solitaire). CSS without `@tailwind` (home / 1a2b) is passed
+    // through untouched. Run it first so postcss-preset-env can downgrade its
+    // output for legacy browsers.
     tailwindcss(),
     postcssPresetEnv({
       stage: 3,

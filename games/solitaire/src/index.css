@@ -2,11 +2,20 @@
  *
  * Layers:
  *   1. @tailwind base/components/utilities  (shadcn-vue-style tokens, drives
- *      the copied BaseButton/BaseBadge/BaseDialog and any utility class).
+ *      the copied BaseButton/BaseBadge and any utility class).
  *   2. Solitaire aesthetic — ported near-verbatim from `css/style.css`
- *      (already iOS 13 / Safari 13 hardened; rewriting risk > reward). The
- *      original ID selectors (`#btn-new` etc.) were generalised into class
- *      selectors since the DOM is now component-rendered.
+ *      (already iOS 13 / Safari 13 hardened; rewriting risk > reward).
+ *
+ * Mixed tailwind refactor (agreed scope):
+ *   * Layout skeleton that has NO responsive overrides lives in the App.vue
+ *     template as utility classes (board max-width, brand/controls/panel
+ *     flex + spacing).
+ *   * Anything the responsive breakpoints override (order, margins, paddings,
+ *     widths, display) stays here in @layer components — a naked utility
+ *     class would win over the layered responsive rule and break mobile.
+ *   * Complex visuals (card gradient, overlays, keyframes) and behavioural
+ *     classes the JS touches (.card / .is-dragging / .drop-ok / .no-drag /
+ *     .shake / .slot / .side-panel / .c-* / .num|dragon|flower) stay here.
  *
  * iOS 13 hardening notes retained inline; see /memories/legacy-browser-css.md
  * and /memories/display-contents-margin-rowgap.md for the full rationale.
@@ -18,7 +27,7 @@
 
 /* ============================================================
  * shadcn-vue design tokens (consumed by tailwind.config theme + BaseButton).
- *.ported verbatim from othello/src/index.css so the reused UI components
+ * Ported verbatim from othello/src/index.css so the reused UI components
  * resolve their `--primary` / `--background` / etc. utilities.
  * ============================================================ */
 @layer base {
@@ -82,31 +91,50 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
-}
 
-/* ============================================================
- * Solitaire aesthetic (ported from css/style.css, iOS-13 hardened).
- * ============================================================ */
-:root {
-  --bg: #06140c;
-  --felt: #0d2b1a;
-  --felt-2: #0a2013;
-  --panel: #0e2a1b;
-  --line: #1c5236;
-  --line-hi: #2f8a5b;
-  --gold: #d8b15a;
-  --ink: #e9efe6;
-  --ink-dim: #9fb6a6;
-  --card-w: 96px;
-  --card-h: 136px;
-  --gap: 10px;
-  --radius: 8px;
-  --row-gap: 24px; /* toolbar ↔ first side-panel row */
-  --red: #c0392b;
-  --black: #161616;
-  --green: #1e8449;
-  --dragon: #12b3a4;
-  --flower: #d63384;
+  /* Solitaire aesthetic tokens (ported from css/style.css, iOS-13 hardened).
+     NOTE: these MUST live in a layer together with their responsive
+     overrides below — an unlayered `:root` would beat the layered media-
+     query `:root` and the mobile card shrink would never apply. */
+  :root {
+    --bg: #06140c;
+    --felt: #0d2b1a;
+    --felt-2: #0a2013;
+    --panel: #0e2a1b;
+    --line: #1c5236;
+    --line-hi: #2f8a5b;
+    --gold: #d8b15a;
+    --ink: #e9efe6;
+    --ink-dim: #9fb6a6;
+    --card-w: 96px;
+    --card-h: 136px;
+    --gap: 10px;
+    --radius: 8px;
+    --row-gap: 24px; /* toolbar ↔ first side-panel row */
+    --red: #c0392b;
+    --black: #161616;
+    --green: #1e8449;
+    --dragon: #12b3a4;
+    --flower: #d63384;
+  }
+
+  /* Tablet portrait: smaller card so 8 cols + gaps fit one screen. */
+  @media (orientation: portrait) and (min-width: 561px) and (max-width: 900px) {
+    :root {
+      --card-w: 76px;
+      --card-h: 108px;
+      --gap: 8px;
+    }
+  }
+
+  @media (orientation: landscape) and (max-width: 896px),
+    (max-width: 560px) {
+    :root {
+      --card-w: 52px;
+      --card-h: 74px;
+      --gap: 6px;
+    }
+  }
 }
 
 * {
@@ -148,832 +176,1275 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: pan-x pan-y;
+  /* manipulation = pan + pinch-zoom allowed, but the browser's default
+     double-tap-to-zoom is disabled (fast taps, no 300ms delay). */
+  touch-action: manipulation;
   -webkit-touch-callout: none;
 }
 
-/* ---------- Top bar ---------- */
-.toolbar-panel,
-.toolbar-panel.side-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  /* gap removed: legacy Safari (< 14.1) ignores flex `gap`; `space-between`
-     already separates the brand and controls row, so no fallback needed here. */
-  padding: 12px 18px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0));
-  border-bottom: 1px solid var(--line);
-  width: 100%;
-  order: 0;
-  /* Toolbar is a real flex item (unlike the `display:contents` side panels),
-     so its margin-bottom participates in row height and pushes the next row
-     (free-cell / foundation panels) down by --row-gap. */
-  margin-bottom: var(--row-gap);
-}
-.brand {
-  display: flex;
-  align-items: center;
-}
-.brand > * + * {
-  margin-left: 10px; /* flex `gap` fallback (legacy Safari) */
-}
-.brand-glyph {
-  font-size: 22px;
-  color: var(--dragon);
-  text-shadow: 0 0 12px rgba(18, 179, 164, 0.6);
-}
-.brand h1 {
-  margin: 0;
-  font-size: 16px;
-  letter-spacing: 2px;
-  color: var(--gold);
-  text-transform: uppercase;
-}
-.controls {
-  display: flex;
-  align-items: center;
-}
-.controls > * + * {
-  margin-left: 8px; /* flex `gap` fallback (legacy Safari) */
-}
-.controls button,
-.wins-pill {
-  font: inherit;
-  font-size: 13px;
-  color: var(--ink);
-  background: rgba(12, 40, 26, 0.85);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 7px 11px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s,
-    transform 0.05s;
-}
-.controls button:hover {
-  border-color: var(--line-hi);
-  background: rgba(20, 60, 38, 0.9);
-}
-.controls button:active {
-  transform: translateY(1px);
-}
-.controls button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.wins-pill {
-  color: var(--gold);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.wins-pill span {
-  margin-left: 4px;
-}
-.btn-mute {
-  min-width: 42px;
-}
-/* Mobile-only fullscreen/landscape toggle; hidden on desktop. */
-.btn-fullscreen {
-  display: none;
-}
-
-/* ---------- Board layout ---------- */
-.board {
-  max-width: 920px;
-  margin: 0 auto 40px;
-  padding: 0 14px;
-  touch-action: none; /* prevent scroll while dragging */
-}
-/* ---------- Responsive layout wrapper ---------- */
-.game-layout {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  /* `row-gap` removed: legacy Safari ignores it. Emulated below with a negative
-     top margin cancelling the first row's child margin. */
-  margin-top: calc(-1 * var(--row-gap));
-  margin-bottom: var(--row-gap);
-}
-/* Legacy-safe row-gap polyfill. Works whether or not the browser supports
-   `display: contents`, since margins are honoured by all flex engines. */
-.game-layout > * {
-  margin-top: var(--row-gap);
-}
-.side-panel {
-  display: contents;
-}
-.panel-content {
-  display: flex;
-}
-.panel-content > * + * {
-  margin-left: var(--gap); /* flex `gap` fallback */
-}
-.cell-group {
-  display: flex;
-}
-.cell-group > * + * {
-  margin-left: var(--gap); /* flex `gap` fallback */
-}
-.side-label {
-  display: none;
-}
-/* Desktop: lay the top row out as [dragon panel] [flower] [foundations]. */
-.right-panel .panel-content {
-  order: 8;
-}
-.flower-slot {
-  order: 5;
-}
-
-/* ---------- Slots ---------- */
-.slot {
-  width: var(--card-w);
-  height: var(--card-h);
-  /*
-   * iOS 13 / Safari 13 expands `inset` shorthand but we keep parity with the
-   * original (where this slot is position-relative only). Stay explicit:
-   */
-  position: relative;
-  border: 1.5px dashed var(--line);
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.18);
-}
-.slot.empty {
-  background: rgba(0, 0, 0, 0.22);
-}
-.slot.foundation {
-  border-style: solid;
-}
-/* Every foundation card is stacked at the slot origin (only the top card is
-   visible). Rendering ALL cards — not just the top — gives motion-v a live
-   element for every auto-moved card, so a cascade like 2→3→4→5 flies each one
-   in with a layout FLIP instead of a hard cut (the cards mount here with the
-   same layout-id their tableau copy unmounted with). */
-.slot.foundation .card {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.foundation.c-red {
-  box-shadow: inset 0 0 0 2px rgba(192, 57, 43, 0.35);
-}
-.foundation.c-black {
-  box-shadow: inset 0 0 0 2px rgba(220, 220, 220, 0.18);
-}
-.foundation.c-green {
-  box-shadow: inset 0 0 0 2px rgba(30, 132, 73, 0.45);
-}
-
-.slot.flower-slot {
-  border-color: rgba(214, 51, 132, 0.6);
-}
-.slot.flower-slot.empty::before {
-  content: '✿';
-  position: absolute;
-  /* `inset` shorthand → explicit (iOS 13 / Safari 13 parity). */
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex; /* `place-items` unreliable on old iOS/Safari → flex */
-  align-items: center;
-  justify-content: center;
-  color: rgba(214, 51, 132, 0.35);
-  font-size: 26px;
-}
-
-.slot.col {
-  width: var(--card-w);
-  min-height: var(--card-h);
-  height: auto;
-  border: none;
-  background: transparent;
-}
-.slot.col.empty::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: var(--card-w);
-  height: var(--card-h);
-  border: 1.5px dashed var(--line);
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-}
-.slot.col.empty {
-  background: transparent;
-}
-
-/* Locked dragon cell */
-.slot.locked {
-  border-style: solid;
-}
-.slot.locked.c-red {
-  border-color: var(--red);
-  box-shadow: inset 0 0 12px rgba(192, 57, 43, 0.35);
-}
-.slot.locked.c-black {
-  border-color: #555;
-  box-shadow: inset 0 0 12px rgba(180, 180, 180, 0.25);
-}
-.slot.locked.c-green {
-  border-color: var(--green);
-  box-shadow: inset 0 0 12px rgba(30, 132, 73, 0.45);
-}
-.locked-dragons {
-  position: absolute;
-  /* `inset:0` → explicit (iOS 13 parity). */
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex; /* place-items → flex */
-  align-items: center;
-  justify-content: center;
-  font-size: 30px;
-}
-.locked-dragons.c-red {
-  color: var(--red);
-}
-.locked-dragons.c-black {
-  color: #ccc;
-}
-.locked-dragons.c-green {
-  color: var(--green);
-}
-.locked-dragons .lock {
-  position: absolute;
-  right: 3px;
-  bottom: 2px;
-  font-size: 11px;
-  opacity: 0.7;
-}
-
-/* ---------- Tableau ---------- */
-.tableau {
-  display: grid;
-  grid-template-columns: repeat(8, var(--card-w));
-  gap: var(--gap);
-  justify-content: space-between;
-  width: 100%;
-  order: 10;
-}
-.col .card:not(:first-child) {
-  margin-top: -108px;
-}
-.col .card {
-  pointer-events: auto;
-}
-
-/* ---------- Cards ---------- */
-.card {
-  width: var(--card-w);
-  height: var(--card-h);
-  border-radius: var(--radius);
-  /* Paper-stock gradient HARD-CODED (no var()) — Safari 13 / iOS 13 silently
-     drops a `background-image` whose gradient params reference CSS custom
-     properties; the `background-color` below is the safe flat fallback. */
-  background-color: #efe9d8;
-  background-image: radial-gradient(
-      120% 80% at 12% 8%,
-      rgba(255, 255, 255, 0.6) 0%,
-      rgba(255, 255, 255, 0) 55%
-    ),
-    linear-gradient(135deg, #f8f3e3 0%, #efe9d8 46%, #e2dac2 100%);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -3px 5px rgba(120, 108, 78, 0.1),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  position: relative;
-  cursor: grab;
-  touch-action: none;
-  /* No `transition: transform` here: motion-v's <motion.div layout> owns the
-   * transform channel for FLIP animations. A CSS transition on transform would
-   * fight motion's WAAPI-driven layout transitions. */
-  font-family: 'DejaVu Sans Mono', 'SFMono-Regular', 'Consolas', 'Menlo', 'Microsoft JhengHei',
-    'PingFang TC', 'Noto Sans CJK TC', monospace;
-}
-/* Corner pips so stacked cards remain readable */
-.corner {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1;
-}
-.corner.tl {
-  top: 3px;
-  left: 4px;
-}
-.corner.br {
-  bottom: 3px;
-  right: 4px;
-  transform: rotate(180deg);
-}
-
-.rank-num {
-  font-size: max(13px, calc(var(--card-w) * 0.22));
-  font-weight: 700;
-}
-.glyph-small {
-  font-size: max(12px, calc(var(--card-w) * 0.2));
-}
-
-.c-red .corner {
-  color: var(--red);
-}
-.c-green .corner {
-  color: var(--green);
-}
-.c-black .corner {
-  color: #1c1c1c;
-}
-
-.card.dragon .corner {
-  color: var(--dragon);
-}
-.card.dragon.c-red .corner {
-  color: var(--red);
-}
-.card.dragon.c-black .corner {
-  color: #1c1c1c;
-}
-.card.dragon.c-green .corner {
-  color: var(--green);
-}
-
-.card.flower .corner {
-  color: var(--flower);
-}
-
-.card.no-drag {
-  cursor: default;
-}
-
-/* Drag states: the REAL cards follow the pointer directly (no cloned ghost).
-   .is-dragging lifts them above the board and gives them their own compositor
-   layer so per-frame transform updates never repaint the page. */
-.card.is-dragging {
-  z-index: 9000;
-  will-change: transform;
-  cursor: grabbing;
-}
-.shake {
-  animation: shake 0.32s;
-}
-@keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  20% {
-    transform: translateX(-4px);
-  }
-  40% {
-    transform: translateX(4px);
-  }
-  60% {
-    transform: translateX(-3px);
-  }
-  80% {
-    transform: translateX(3px);
-  }
-}
-
-/* Drop highlight */
-.slot.drop-ok {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(216, 177, 90, 0.6);
-}
-
-/* ---------- Dragon collect button ---------- */
-.dragon-btn {
-  width: var(--card-w);
-  height: var(--card-h);
-  font: inherit;
-  font-size: 12px;
-  color: var(--ink-dim);
-  background: rgba(8, 30, 24, 0.7);
-  border: 1.5px dashed var(--line);
-  border-radius: var(--radius);
-  display: grid;
-  grid-template-rows: 1fr auto;
-  justify-items: center;
-  align-items: center;
-  cursor: not-allowed;
-  transition: all 0.15s;
-}
-.dragon-btn .glyph {
-  font-size: 26px;
-  opacity: 0.5;
-}
-.dragon-btn.ready {
-  color: #06140c;
-  border-style: solid;
-  cursor: pointer;
-  animation: pulse 1.4s infinite;
-}
-.dragon-btn.ready[data-color='red'] {
-  background: linear-gradient(160deg, #e74c3c, #a8231a);
-  border-color: #e74c3c;
-  box-shadow: 0 0 18px rgba(231, 76, 60, 0.55);
-}
-.dragon-btn.ready[data-color='black'] {
-  background: linear-gradient(160deg, #7f8c8d, #4a4a4a);
-  border-color: #95a5a6;
-  box-shadow: 0 0 18px rgba(149, 165, 166, 0.55);
-}
-.dragon-btn.ready[data-color='green'] {
-  background: linear-gradient(160deg, #27ae60, #186a36);
-  border-color: #27ae60;
-  box-shadow: 0 0 18px rgba(39, 174, 96, 0.55);
-}
-.dragon-btn.ready .glyph {
-  opacity: 1;
-  color: #06140c;
-}
-@keyframes pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 10px rgba(18, 200, 184, 0.45);
-  }
-  50% {
-    box-shadow: 0 0 22px rgba(18, 200, 184, 0.85);
-  }
-}
-
-/* ---------- Achievements ---------- */
-.achievements {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin-top: 30px;
-  flex-wrap: wrap;
-}
-.achv {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--ink-dim);
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 5px 12px 5px 8px;
-  opacity: 0.55;
-  transition: all 0.2s;
-}
-.achv .ribbon {
-  font-size: 15px;
-}
-.achv i {
-  font-style: normal;
-  color: var(--ink-dim);
-}
-.achv.done {
-  opacity: 1;
-  color: var(--gold);
-  border-color: var(--gold);
-}
-
-/* ---------- Win overlay ---------- */
-.overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0; /* `inset:0` → explicit (iOS 13 parity) */
-  background: rgba(2, 10, 6, 0.78);
-  /* Centre the modal. flex + align/justify `center` is a hard floor on iOS /
-     Safari < 13.1 where `place-items` silently fails (memories /
-     legacy-browser-css.md). */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* FLYOVER LAYER — every fixed full-screen float (overlay / toasts) lives
-     ABOVE the card animation bands (max 9000 = drag / deal flight). Without
-     this the last auto-moved card (e.g. n-black-9 at z 6008) would fly OVER
-     the win overlay the moment it appears — the final move often IS the win.
-     NOTE: 10000 > 9000 — the value MUST stay above the highest card band. */
-  z-index: 10000;
-}
-.overlay[hidden] {
-  display: none;
-}
-.overlay-card {
-  background: linear-gradient(160deg, #103023, #0a1c13);
-  border: 1px solid var(--line-hi);
-  border-radius: 14px;
-  padding: 34px 44px;
-  text-align: center;
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
-}
-.overlay-glyph {
-  font-size: 54px;
-  color: var(--gold);
-  text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
-}
-
-/* Win overlay redesign: the golden halo BREATHES on the taiji glyph itself
-   (text-shadow pulse); the glyph no longer spins. Plain CSS keyframe on
-   text-shadow only — no @property / gradient var(), safe for Safari 13 /
-   iOS 13, see memories/legacy-browser-css.md). */
-.win-card {
-  border-color: rgba(216, 177, 90, 0.65);
-}
-.win-card .overlay-glyph {
-  font-size: 72px;
-  animation: win-breathe 2.8s ease-in-out infinite;
-}
-@keyframes win-breathe {
-  0%,
-  100% {
-    text-shadow:
-      0 0 12px rgba(216, 177, 90, 0.35),
-      0 0 30px rgba(216, 177, 90, 0.18);
-  }
-  50% {
-    text-shadow:
-      0 0 26px rgba(216, 177, 90, 0.95),
-      0 0 64px rgba(216, 177, 90, 0.5);
-  }
-}
-/* Respect reduced-motion: keep a steady halo, drop the pulse. */
-@media (prefers-reduced-motion: reduce) {
-  .win-card .overlay-glyph {
-    animation: none;
-    text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
-  }
-}
-.overlay-card h2 {
-  margin: 8px 0 4px;
-  color: var(--gold);
-  letter-spacing: 2px;
-}
-.overlay-card p {
-  margin: 0 0 18px;
-  color: var(--ink-dim);
-}
-.overlay-card button {
-  font: inherit;
-  color: var(--ink);
-  background: var(--line-hi);
-  border: none;
-  border-radius: 8px;
-  padding: 10px 18px;
-  cursor: pointer;
-}
-.overlay-card button:hover {
-  filter: brightness(1.1);
-}
-
-/* New-game confirmation dialog: two buttons side by side. */
-.newgame-card {
-  padding: 30px 38px;
-}
-/* Defensive stacking: the win overlay renders later in the DOM and both are
-   fixed full-screen layers, so without this the confirm dialog would sit
-   UNDER the win overlay and its buttons would be unclickable. (askNewGame()
-   already skips the confirm when a win is showing; this guards any future
-   path.) */
-.overlay.newgame-overlay {
-  z-index: 10100;
-}
-.newgame-card .overlay-glyph {
-  font-size: 44px;
-}
-.newgame-card h2 {
-  margin-top: 6px;
-  font-size: 20px;
-}
-.dialog-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px; /* `gap` fallback for old Safari: margin on buttons below */
-}
-.dialog-actions button {
-  min-width: 88px;
-}
-.dialog-actions .btn-ghost {
-  background: transparent;
-  color: var(--ink-dim);
-  border: 1px solid var(--line);
-}
-.dialog-actions .btn-ghost:hover {
-  color: var(--ink);
-  filter: none;
-  background: rgba(255, 255, 255, 0.06);
-}
-.dialog-actions .btn-primary {
-  background: var(--gold);
-  color: #1a1408;
-  font-weight: 700;
-}
-
-/* ---------- Toasts ---------- */
-.toasts {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  /* Above every card animation band and both overlays; pointer-events:none
-     so it never blocks drag or dialog clicks. */
-  z-index: 10200;
-  pointer-events: none;
-}
-.toast {
-  background: rgba(8, 30, 24, 0.96);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  border-radius: 8px;
-  padding: 9px 16px;
-  font-size: 13px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-}
-
-/* ---------- Responsive ---------- */
-/* Tablet portrait: smaller card so 8 cols + gaps fit one screen. */
-@media (orientation: portrait) and (min-width: 561px) and (max-width: 900px) {
-  :root {
-    --card-w: 76px;
-    --card-h: 108px;
-    --gap: 8px;
-  }
-  .col .card:not(:first-child) {
-    margin-top: -80px;
-  }
-}
-
-@media (orientation: landscape) and (max-width: 896px),
-  (max-width: 560px) {
-  :root {
-    --card-w: 52px;
-    --card-h: 74px;
-    --gap: 6px;
-  }
-  html,
-  body {
-    overflow: hidden;
-  }
-
-  .game-layout {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    row-gap: 0;
-    /* Reset desktop negative-margin polyfill (would pull the strip off-screen). */
-    margin-top: 0;
-    margin-bottom: 14px;
-    position: relative;
-  }
-  .game-layout > * + * {
-    margin-left: 8px;
-  }
-  .game-layout > * {
-    margin-top: 0;
-  }
+/* ============================================================
+ * Components — Solitaire board + chrome.
+ * (Utility skeleton: App.vue template. Behavioural + complex rules: here.)
+ * ============================================================ */
+@layer components {
+  /* ---------- Top bar ---------- */
+  /* Layout (flex direction/alignment + spacing) lives here in @layer so the
+     responsive overrides below (vertical toolbar on mobile) can win - a naked
+     utility class would outrank the layered mobile rule and break the layout
+     (regression caught in review). */
+  .toolbar-panel,
   .toolbar-panel.side-panel {
-    margin-bottom: 0;
-  }
-
-  .side-panel {
     display: flex;
-    flex-direction: column;
+    align-items: center;
     justify-content: space-between;
-    width: 56px;
-    flex-shrink: 0;
-    padding: 4px 0;
-    align-items: center;
-  }
-
-  .toolbar-panel.side-panel {
-    order: 0;
-    width: 44px;
-    flex-direction: column;
-    padding: 6px 4px;
-    border-bottom: none;
-    border-right: 1px solid var(--line);
-    background: rgba(0, 0, 0, 0.25);
-  }
-  .toolbar-panel.side-panel > * + * {
-    margin-top: 8px;
-  }
-  .toolbar-panel.side-panel .brand h1 {
-    display: none;
-  }
-  .toolbar-panel.side-panel .controls {
-    flex-direction: column;
-  }
-  .toolbar-panel.side-panel .controls > * + * {
-    margin-top: 6px;
-  }
-  .toolbar-panel.side-panel .controls button,
-  .toolbar-panel.side-panel .wins-pill {
-    font-size: 11px;
-    padding: 5px 4px;
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    min-width: 0;
+    /* gap removed: legacy Safari (< 14.1) ignores flex `gap`; `space-between`
+       already separates the brand and controls row, so no fallback needed. */
+    position: relative;
+    padding: 12px 18px;
     width: 100%;
-  }
-  .toolbar-panel.side-panel .wins-pill {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-  }
-
-  .left-panel {
-    order: 1;
-  }
-  .tableau {
-    order: 2;
-    flex: 1;
-    width: auto;
-    display: grid;
-    grid-template-columns: repeat(8, var(--card-w));
-    gap: 6px;
-    justify-content: center;
-  }
-  .right-panel {
-    order: 3;
-  }
-  /* Reset desktop "flower in middle" ordering: right panel is a vertical strip,
-     so fall back to source order (foundations top, flower beneath). */
-  .right-panel .panel-content {
     order: 0;
+    /* Toolbar is a real flex item (unlike the `display:contents` side panels),
+       so its margin-bottom participates in row height and pushes the next row
+       (free-cell / foundation panels) down by --row-gap. */
+    margin-bottom: var(--row-gap);
   }
-  .flower-slot {
-    order: 0;
-  }
-
-  .panel-content {
-    flex-direction: column;
-    align-items: center;
-  }
-  .panel-content > * + * {
-    margin-top: 6px;
-  }
-
-  .panel-content .cell-group {
-    flex-direction: column;
-    align-items: center;
-  }
-  .panel-content .cell-group > * + * {
-    margin-top: 6px;
-  }
-
-  .dragon-btn .lbl {
-    display: none;
-  }
-
-  .side-label {
+  /* Full-bleed toolbar: the gradient + bottom border stretch across the
+     WHOLE viewport while the toolbar's own content stays centred in the
+     container. The ::before is the first child, so the brand/controls render
+     above it naturally. (Explicit left/right + calc(50% - 50vw) — iOS 13
+     safe; absolute positioning never triggers horizontal scrollbars.) */
+  .toolbar-panel::before {
+    content: '';
     position: absolute;
-    top: -16px;
-    font-size: 9px;
-    color: rgba(255, 255, 255, 0.5);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    display: block;
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 50vw);
+    right: calc(50% - 50vw);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0));
+    border-bottom: 1px solid var(--line);
+    pointer-events: none;
   }
-  .lbl-left {
-    left: 44px;
+  .brand-glyph {
+    /* 🃏 Joker emoji — a colour glyph font, so `color` below only matters as
+       a fallback on monochrome emoji renders; the glow is handled by a
+       drop-shadow filter instead (works on colour emoji). */
+    font-size: 24px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    color: var(--gold);
+    filter: drop-shadow(0 0 10px rgba(18, 179, 164, 0.55));
   }
-  .lbl-right {
-    right: 0;
+  .brand {
+    display: flex;
+    align-items: center;
   }
-
-  .card.num .rank,
-  .card.dragon .glyph,
-  .card.flower .glyph {
-    font-size: 20px;
-  }
-  .col .card:not(:first-child) {
-    margin-top: -54px;
+  .brand > * + * {
+    margin-left: 10px; /* flex `gap` fallback (legacy Safari) */
   }
   .brand h1 {
-    font-size: 13px;
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    text-transform: uppercase;
   }
-
-  /* Show fullscreen/landscape toggle only on mobile layouts. */
-  .btn-fullscreen {
+  .controls {
+    display: flex;
+    align-items: center;
+  }
+  .controls > * + * {
+    margin-left: 8px; /* flex `gap` fallback (legacy Safari) */
+  }
+  .controls button,
+  .wins-pill {
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: rgba(12, 40, 26, 0.85);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 11px;
+    cursor: pointer;
+    transition:
+      border-color 0.15s,
+      background 0.15s,
+      transform 0.05s;
+  }
+  .controls button:hover {
+    border-color: var(--line-hi);
+    background: rgba(20, 60, 38, 0.9);
+  }
+  .controls button:active {
+    transform: translateY(1px);
+  }
+  .controls button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .wins-pill {
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wins-pill span {
+    margin-left: 4px;
+  }
+  .btn-hint,
+  .btn-mute {
+    min-width: 42px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 7px 6px;
-    writing-mode: horizontal-tb;
-    text-orientation: mixed;
   }
-  .btn-fullscreen.fs-active {
+  /* Mobile-only fullscreen/landscape toggle; hidden on desktop. */
+  .btn-fullscreen {
+    display: none;
+  }
+
+  /* ---------- Responsive layout wrapper ---------- */
+  .game-layout {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    /* `row-gap` removed: legacy Safari ignores it. Emulated below with a
+       negative top margin cancelling the first row's child margin. */
+    margin-top: calc(-1 * var(--row-gap));
+    margin-bottom: var(--row-gap);
+  }
+  /* Legacy-safe row-gap polyfill. Works whether or not the browser supports
+     `display: contents`, since margins are honoured by all flex engines. */
+  .game-layout > * {
+    margin-top: var(--row-gap);
+  }
+  .side-panel {
+    display: contents;
+  }
+  .panel-content {
+    display: flex;
+  }
+  .panel-content > * + * {
+    margin-left: var(--gap); /* flex `gap` fallback */
+  }
+  .cell-group {
+    display: flex;
+  }
+  .cell-group > * + * {
+    margin-left: var(--gap); /* flex `gap` fallback */
+  }
+  .side-label {
+    display: none;
+  }
+  /* Desktop: lay the top row out as [dragon panel] [flower] [foundations]. */
+  .right-panel .panel-content {
+    order: 8;
+  }
+  .flower-slot {
+    order: 5;
+  }
+
+  /* ---------- Slots ---------- */
+  .slot {
+    width: var(--card-w);
+    height: var(--card-h);
+    /*
+     * iOS 13 / Safari 13 expands `inset` shorthand but we keep parity with the
+     * original (where this slot is position-relative only). Stay explicit:
+     */
+    position: relative;
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .slot.empty {
+    background: rgba(0, 0, 0, 0.22);
+  }
+  .slot.foundation {
+    border-style: solid;
+  }
+  /* Every foundation card is stacked at the slot origin (only the top card is
+     visible). Rendering ALL cards — not just the top — gives the auto-move
+     flight (animateAutoMoves) a live element for every auto-moved card, so a
+     cascade like 2→3→4→5 flies each one in with a transform tween instead of a
+     hard cut. */
+  .slot.foundation .card {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .foundation.c-red {
+    box-shadow: inset 0 0 0 2px rgba(192, 57, 43, 0.35);
+  }
+  .foundation.c-black {
+    box-shadow: inset 0 0 0 2px rgba(220, 220, 220, 0.18);
+  }
+  .foundation.c-green {
+    box-shadow: inset 0 0 0 2px rgba(30, 132, 73, 0.45);
+  }
+
+  .slot.flower-slot {
+    border-color: rgba(214, 51, 132, 0.6);
+  }
+  .slot.flower-slot.empty::before {
+    content: '✿';
+    position: absolute;
+    /* `inset` shorthand → explicit (iOS 13 / Safari 13 parity). */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex; /* `place-items` unreliable on old iOS/Safari → flex */
+    align-items: center;
+    justify-content: center;
+    color: rgba(214, 51, 132, 0.35);
+    font-size: 26px;
+  }
+
+  .slot.col {
+    width: var(--card-w);
+    min-height: var(--card-h);
+    height: auto;
+    border: none;
+    background: transparent;
+  }
+  /*
+   * STATIC drop-zone outline — a board property, not a state class. Rendered
+   * ALWAYS: it marks the seat of a pile's first card, and filled piles cover
+   * it naturally (cards paint over the pseudo-element). A column that is
+   * dragged empty shows the dashed box again with no JS state flip — the drag
+   * carries the REAL cards via inline transform, so `.empty` would be stale
+   * mid-drag anyway.
+   */
+  .slot.col::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--card-w);
+    height: var(--card-h);
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    background: rgba(0, 0, 0, 0.22);
+    pointer-events: none;
+  }
+
+  /* Locked dragon cell */
+  .slot.locked {
+    border-style: dashed;
+  }
+  .slot.locked.c-red {
+    border-color: var(--red);
+    box-shadow: inset 0 0 12px rgba(192, 57, 43, 0.35);
+  }
+  .slot.locked.c-black {
+    border-color: #555;
+    box-shadow: inset 0 0 12px rgba(180, 180, 180, 0.25);
+  }
+  .slot.locked.c-green {
+    border-color: var(--green);
+    box-shadow: inset 0 0 12px rgba(30, 132, 73, 0.45);
+  }
+  .locked-dragons {
+    position: absolute;
+    /* `inset:0` → explicit (iOS 13 parity). The pile sits in the slot's
+       content box — the dashed border frame stays visible around it. */
+    width: var(--card-w);
+    height: var(--card-h);
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+  /* Every dragon of the locked pile is stacked at the slot origin (only the
+     top one is visible). Rendering ALL of them gives the 收龙 flight a live
+     element for each dragon, so the peel cascade tweens real cards home. */
+  .locked-dragons .card {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .locked-dragons.c-red {
+    color: var(--red);
+  }
+  .locked-dragons.c-black {
+    color: #ccc;
+  }
+  .locked-dragons.c-green {
+    color: var(--green);
+  }
+  /*
+   * Flip pair inside the locked cell (same 3D recipe as the WinCard, see
+   * .win-scene / .win-card / .face): the REAL dragon cards live on the FRONT
+   * face — the 收龙 flight needs live elements (commit-then-fly), and
+   * backface-visibility hides them once the pile is complete. The card back
+   * (CardBack) sits on the BACK face. `.flip-card.flipped` is data-driven
+   * (pile complete, see App.vue), so an undo reverts it automatically.
+   *
+   * Two stacked 3D layers: the OUTER `.flip-tilt` carries the rotateX
+   * lift-and-put-down envelope (a keyframes ANIMATION fired by the App.vue
+   * watch when the pile completes — NOT by the flipped class, so a
+   * boot-restored pile stays static), the INNER `.flip-card` carries the
+   * rotateY 180° seal flip (a transition, delay-matched to the tilt). Both
+   * run in one perspective space (`.flip-scene`, 600px — deeper than the
+   * old 900px so the rotateY 90° mid-point visibly foreshortens).
+   */
+  .flip-scene {
+    position: absolute;
+    /* `inset:0` → explicit (iOS 13 parity). */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    perspective: 600px;
+    -webkit-perspective: 600px;
+  }
+  .flip-tilt {
+    position: absolute;
+    /* `inset:0` → explicit (iOS 13 parity). */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* NO transform-style:preserve-3d on this layer — iOS 13 Safari flattens
+       nested preserve-3d chains when the middle layer runs a transform
+       animation, which breaks backface-visibility on the faces below (the
+       front face then paints OVER the back → the pile never shows the card
+       back). rotateX here simply projects the flip-card's own 3D scene, so
+       the tilt reads fine without sharing the 3D space. */
+    transform: rotateX(0deg);
+    /* Delay must match .flip-card.flipped's transition-delay: the last
+       dragon is still landing (FLY_MS 320 + 60ms settle) when the pile
+       completes — the tilt must not lift before the flip starts. */
+  }
+  .flip-tilt.playing {
+    animation: flip-seal-tilt 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.4s;
+  }
+  .flip-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    -webkit-transform-style: preserve-3d;
+    transform: rotateY(0deg); /* parks showing the dragon FRONT */
+    transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .flip-card.flipped {
+    transform: rotateY(180deg);
+    /* The pile completes at the SAME publish that starts the last dragon's
+       landing flight (FLY_MS 320 + 60ms settle = 380ms) — the flip must wait
+       for that landing, or the last dragon visibly vanishes mid-air. */
+    transition-delay: 0.4s;
+  }
+  /* Front-face safety net (ALL engines, not just iOS 13): the sealed card
+     back is normally shown by backface-visibility alone — the front is at
+     rotateY(180°) and hidden. That single mechanism can give out: iOS 13
+     Safari flattens flattened preserve-3d chains, and mobile GPUs can glitch
+     the composite around the flip (one-frame front-face flash). So hide the
+     front outright once the flip has finished (delay 0.4 + 0.8s = exactly
+     when the rotateY transition lands). The delay keeps the front visible
+     while the last dragon is still flying; visibility is not animatable
+     over 3D, so this is a hard cut AFTER the tween — identical timing, no
+     visual change on modern browsers. App.vue also sets an INLINE
+     visibility:hidden on transitionend (precise, no delay race). Undo
+     unmounts the pile (v-if), so no restore transition fires. */
+  .flip-card.flipped .face.front {
+    visibility: hidden;
+    transition: visibility 0s linear 1.2s;
+  }
+  .flip-card .face {
+    position: absolute;
+    /* `inset:0` → explicit (iOS 13 parity). */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flip-card .face.back {
+    transform: rotateY(180deg);
+    /* Paper-stock background + card radius: the SVG's white paper face is
+       now full-bleed (no transparent edge), but its rx=20 corners (≈6.4px
+       at 96px) are slightly rounder than the normal card's --radius — the
+       corner crescents would show the slot behind. A paper-coloured face
+       with the card radius makes the back read EXACTLY like a normal card
+       (which is a white rounded rect). */
+    background: #efe9d8;
+    border-radius: var(--radius);
+  }
+  .flip-card .face.back .card-back,
+  .flip-card .face.back .card-back img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* The SVG is authored at 192×272 — EXACTLY the card's 96×136 ratio
+       (2×), so no object-fit scaling happens: fill maps 1:1, the paper
+       face fills the card edge-to-edge. No zoom / crop / letterbox. */
+    object-fit: fill;
+  }
+  /* Tilt envelope keyframes — the seal flip is a THREE-stage hand feel:
+     LIFT (scale up + start the rotateX pitch) → FLIP (stay enlarged while
+     rotateY turns through its 90° mid-point — the perspective foreshortening
+     reads strongest here) → SETTLE (back to the settled size, rotateX 0).
+     The scale lift is 8%: big enough to read as a deliberate 「抬起」but
+     small enough that the enlarged pile never overlaps its right neighbour
+     (the flower slot, 10px away). 0.8s animation + 0.4s delay mirrors the
+     .flip-card rotateY transition (0.4→1.2s), so the timeline below maps
+     onto the flip's own progress. */
+  @keyframes flip-seal-tilt {
+    0% {
+      transform: rotateX(0deg) scale(1);
+    }
+    30% {
+      transform: rotateX(6deg) scale(1.08);
+    }
+    50% {
+      transform: rotateX(10deg) scale(1.08);
+    }
+    70% {
+      transform: rotateX(6deg) scale(1.08);
+    }
+    100% {
+      transform: rotateX(0deg) scale(1);
+    }
+  }
+
+  /* ---------- Tableau ---------- */
+  .tableau {
+    /* Anchor for the WinCard emblem overlay (position:absolute inset:0). */
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(8, var(--card-w));
+    gap: var(--gap);
+    justify-content: space-between;
+    /* Keep every column's box at its OWN pile height. Grid defaults to
+       stretch, which inflates short/empty columns to the tallest column's
+       height — the `.drop-ok` highlight and the pointer hit-test would then
+       cover dead empty space below a short pile. With `start`, each col rect
+       IS its pile rect (empty col = min-height = the dashed-outline rect). */
+    align-items: start;
+    width: 100%;
+    order: 10;
+  }
+  .col .card:not(:first-child) {
+    margin-top: -108px;
+  }
+  .col .card {
+    pointer-events: auto;
+  }
+
+  /* ---------- Cards ---------- */
+  .card {
+    width: var(--card-w);
+    height: var(--card-h);
+    border-radius: var(--radius);
+    /* Paper-stock gradient HARD-CODED (no var()) — Safari 13 / iOS 13 silently
+       drops a `background-image` whose gradient params reference CSS custom
+       properties; the `background-color` below is the safe flat fallback. */
+    background-color: #efe9d8;
+    background-image: radial-gradient(
+        120% 80% at 12% 8%,
+        rgba(255, 255, 255, 0.6) 0%,
+        rgba(255, 255, 255, 0) 55%
+      ),
+      linear-gradient(135deg, #f8f3e3 0%, #efe9d8 46%, #e2dac2 100%);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      inset 0 -3px 5px rgba(120, 108, 78, 0.1),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    position: relative;
+    cursor: grab;
+    touch-action: none;
+    /* No `transition: transform` here: the drag controller owns the transform
+     * channel inline (parked position, then the 240ms settle-back / settle-into
+     * transitions). A CSS transition on transform would fight the inline ones. */
+    font-family: 'DejaVu Sans Mono', 'SFMono-Regular', 'Consolas', 'Menlo', 'Microsoft JhengHei',
+      'PingFang TC', 'Noto Sans CJK TC', monospace;
+  }
+  /* Corner pips so stacked cards remain readable */
+  .corner {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+  }
+  .corner.tl {
+    top: 3px;
+    left: 4px;
+  }
+  .corner.br {
+    bottom: 3px;
+    right: 4px;
+    transform: rotate(180deg);
+  }
+
+  .rank-num {
+    font-size: max(13px, calc(var(--card-w) * 0.22));
+    font-weight: 700;
+  }
+  .glyph-small {
+    font-size: max(12px, calc(var(--card-w) * 0.2));
+  }
+
+  .c-red .corner {
+    color: var(--red);
+  }
+  .c-green .corner {
+    color: var(--green);
+  }
+  .c-black .corner {
+    color: #1c1c1c;
+  }
+
+  .card.dragon .corner {
+    color: var(--dragon);
+  }
+  .card.dragon.c-red .corner {
+    color: var(--red);
+  }
+  .card.dragon.c-black .corner {
+    color: #1c1c1c;
+  }
+  .card.dragon.c-green .corner {
+    color: var(--green);
+  }
+
+  .card.flower .corner {
+    color: var(--flower);
+  }
+
+  .card.no-drag {
+    cursor: default;
+  }
+
+  /* Drag states: the REAL cards follow the pointer directly (no cloned ghost).
+     .is-dragging lifts them above the board and gives them their own compositor
+     layer so per-frame transform updates never repaint the page. */
+  .card.is-dragging {
+    z-index: 9000;
+    will-change: transform;
+    cursor: grabbing;
+  }
+  .shake {
+    animation: shake 0.32s;
+  }
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-4px);
+    }
+    40% {
+      transform: translateX(4px);
+    }
+    60% {
+      transform: translateX(-3px);
+    }
+    80% {
+      transform: translateX(3px);
+    }
+  }
+
+  /* Drop highlight — cheap paint only. The old 16px blurred glow forced the
+     rasterizer to render a large soft shadow on every highlight switch
+     mid-drag, stuttering slow devices; a solid 2px ring + flat tint paint as
+     a tiny solid region instead. */
+  .slot.drop-ok {
     border-color: var(--gold);
+    box-shadow: 0 0 0 2px var(--gold);
+    background-color: rgba(216, 177, 90, 0.16);
+  }
+
+  /* ---------- Dragon collect button ---------- */
+  .dragon-btn {
+    width: var(--card-w);
+    height: var(--card-h);
+    font: inherit;
+    font-size: 12px;
+    color: var(--ink-dim);
+    background: rgba(8, 30, 24, 0.7);
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    display: grid;
+    grid-template-rows: 1fr auto;
+    justify-items: center;
+    align-items: center;
+    cursor: not-allowed;
+    transition: all 0.15s;
+  }
+  .dragon-btn .glyph {
+    font-size: 26px;
+    opacity: 0.5;
+  }
+  .dragon-btn.ready {
+    color: #06140c;
+    border-style: solid;
+    cursor: pointer;
+    animation: pulse 1.4s infinite;
+  }
+  .dragon-btn.ready[data-color='red'] {
+    background: linear-gradient(160deg, #e74c3c, #a8231a);
+    border-color: #e74c3c;
+    box-shadow: 0 0 18px rgba(231, 76, 60, 0.55);
+  }
+  .dragon-btn.ready[data-color='black'] {
+    background: linear-gradient(160deg, #7f8c8d, #4a4a4a);
+    border-color: #95a5a6;
+    box-shadow: 0 0 18px rgba(149, 165, 166, 0.55);
+  }
+  .dragon-btn.ready[data-color='green'] {
+    background: linear-gradient(160deg, #27ae60, #186a36);
+    border-color: #27ae60;
+    box-shadow: 0 0 18px rgba(39, 174, 96, 0.55);
+  }
+  .dragon-btn.ready .glyph {
+    opacity: 1;
+    color: #06140c;
+  }
+  @keyframes pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 10px rgba(18, 200, 184, 0.45);
+    }
+    50% {
+      box-shadow: 0 0 22px rgba(18, 200, 184, 0.85);
+    }
+  }
+
+  /* ---------- Achievements ---------- */
+  .achievements {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 30px;
+    flex-wrap: wrap;
+  }
+  .achv {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--ink-dim);
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 5px 12px 5px 8px;
+    opacity: 0.55;
+    transition: all 0.2s;
+  }
+  .achv .ribbon {
+    font-size: 15px;
+  }
+  .achv i {
+    font-style: normal;
+    color: var(--ink-dim);
+  }
+  .achv.done {
+    opacity: 1;
     color: var(--gold);
+    border-color: var(--gold);
+  }
+
+  /* ---------- Win overlay ---------- */
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0; /* `inset:0` → explicit (iOS 13 parity) */
+    background: rgba(2, 10, 6, 0.78);
+    /* Centre the modal. flex + align/justify `center` is a hard floor on iOS /
+       Safari < 13.1 where `place-items` silently fails (memories /
+       legacy-browser-css.md). */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* FLYOVER LAYER — every fixed full-screen float (overlay / toasts) lives
+       ABOVE the card animation bands (max 9000 = drag / deal flight). Without
+       this the last auto-moved card (e.g. n-black-9 at z 6008) would fly OVER
+       the win overlay the moment it appears — the final move often IS the win.
+       NOTE: 10000 > 9000 — the value MUST stay above the highest card band. */
+    z-index: 10000;
+  }
+  .overlay[hidden] {
+    display: none;
+  }
+  .overlay-card {
+    background: linear-gradient(160deg, #103023, #0a1c13);
+    border: 1px solid var(--line-hi);
+    border-radius: 14px;
+    padding: 34px 44px;
+    text-align: center;
+    box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+  }
+  .overlay-glyph {
+    font-size: 54px;
+    color: var(--gold);
+    text-shadow: 0 0 24px rgba(216, 177, 90, 0.6);
+  }
+
+  /* Win card IN the tableau (no modal — see WinCard.vue): a 3D coin-flip
+     card pops in over the now-empty tableau — outer `scale` overshoot bounce
+     + inner `.win-card` rotateY spin that starts facing the navy SVG BACK
+     and lands on the 2.gif FRONT, then breathes gold forever (drop-shadow,
+     which CAN glow an <img> face — the old text-shadow on the 🃏 emoji
+     couldn't). The entrance still needs two layers — one element can't host
+     two timing functions on one transform (and `@property` vars are iOS 13
+     unsafe). Plain transform/filter keyframes — no @property / gradient
+     var(), safe for Safari 13 / iOS 13 (memories/legacy-browser-css.md). */
+  .win-stage {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0; /* `inset:0` → explicit (iOS 13 parity) */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    /* Fixed overlay band — ABOVE the card animation bands (max 9000) so no
+       flying card can cover it; below the toasts (10200, pointer-events:
+       none, so they never block the button). pointer-events:none on the
+       stage keeps any stray tableau slot clickable; the button opts back in. */
+    z-index: 10050;
+    pointer-events: none;
+  }
+  .win-emblem {
+    /* Outer scale entrance (overshoot bounce) AND the gold drop-shadow
+       BREATHE live here. The breathe was `text-shadow` on the old 🃏
+       emoji, but text-shadow can't glow an <img> face, so the glow moved
+       to an outer `filter` on this wrapper. */
+    animation: win-enter-scale 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+      win-breathe 2.8s ease-in-out infinite;
+  }
+  /* 3D coin-flip card (see WinCard.vue): perspective root → flippable face
+     pair. Plain transforms only (no @property), iOS-13 / Safari-13 safe. */
+  .win-scene {
+    /* Same aspect ratio as the tableau cards (96×136 ≈ 0.706) so the win
+       card reads as the SAME deck, just bigger (140×198). */
+    width: var(--win-card-w, 140px);
+    height: var(--win-card-h, 198px);
+    /* 600px (was 900px): deeper 3D so the spin's foreshortening reads
+       clearly at the 90°/270° moments. */
+    perspective: 600px;
+  }
+  .win-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform: rotateY(0deg); /* parks showing the 2.gif FRONT */
+    animation: win-coin-spin 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .win-card .face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .win-card .face.front {
+    /* paper face matches tableau cards; thin gold border + inset rim */
+    background: #efe9d8;
+    border: 1px solid var(--gold);
+    box-shadow: inset 0 0 0 2px rgba(216, 177, 90, 0.25);
+  }
+  .win-card .face.front img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Margin around the 2.gif: the paper face stays visible as a frame.
+       Percentage padding is relative to the face's width, so it scales with
+       the responsive card (140px → 14px desktop, 108px → ~11px mobile).
+       box-sizing keeps 100% width from overflowing the padding. */
+    padding: 10%;
+    box-sizing: border-box;
+    object-fit: contain; /* 2.gif (native 200×150, 4:3) letterboxed inside
+                             the padded content box */
+  }
+  .win-card .face.back {
+    transform: rotateY(180deg);
+    /* Paper-coloured letterbox: the full-bleed SVG is 1:1.4 vs the face
+       1:1.415 — contain leaves a hairline paper strip; match the front's
+       paper stock instead of showing the page through it. */
+    background: #efe9d8;
+  }
+  .win-card .face.back img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Same card-back file as the locked dragon piles (one deck, one
+       identity): the full-bleed white paper face + gold frame shows
+       as-is, framed by the win card's gold border. */
+    object-fit: contain;
+  }
+  @media (max-width: 560px) {
+    .win-scene {
+      width: 108px;
+      height: 153px;
+    }
+  }
+  .win-btn {
+    margin-top: 14px;
+    font: inherit;
+    color: var(--ink);
+    background: var(--line-hi);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    cursor: pointer;
+    /* Fade in AFTER the emblem entrance; `both` keeps it hidden before. */
+    animation: win-btn-in 0.2s ease 0.55s both;
+    pointer-events: auto;
+  }
+  .win-btn:hover {
+    filter: brightness(1.1);
+  }
+  .win-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  /* Exit (再来一局 clicked): accelerating spin — each stage's angle delta
+     grows (90 → 150 → 210 → 270) = speed-up, ease-in per stage adds to it —
+     with a strictly linear shrink 1→0 (staged to the spin's timing). */
+  .win-emblem.is-exiting {
+    animation: win-exit-scale 1s linear forwards,
+      win-breathe 2.8s ease-in-out infinite;
+  }
+  .win-emblem.is-exiting .win-card {
+    animation: win-exit-coin 1s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+  }
+  @keyframes win-enter-scale {
+    from {
+      transform: scale(0);
+    }
+  }
+  /* Entrance coin spin: start facing the navy BACK (180°), land on the
+     FRONT (720° ≡ 0°). Passing 360°/540° flips front↔back, so it alternates.
+     One element can hold a single transform-timing, so the spin lives on
+     .win-card while the scale overshoot lives on .win-emblem.
+     A rotateX ±5° wobble rides the spin (like a tossed coin swaying):
+     negative tilt early, positive late — the two full turns sway the card
+     nose-down then nose-up, doubling the 3D read. */
+  @keyframes win-coin-spin {
+    0% {
+      transform: rotateY(180deg) rotateX(-5deg);
+    }
+    25% {
+      transform: rotateY(315deg) rotateX(2deg);
+    }
+    50% {
+      transform: rotateY(450deg) rotateX(5deg);
+    }
+    75% {
+      transform: rotateY(585deg) rotateX(0deg);
+    }
+    100% {
+      transform: rotateY(720deg) rotateX(-5deg);
+    }
+  }
+  @keyframes win-exit-scale {
+    0% {
+      transform: scale(1);
+    }
+    15% {
+      transform: scale(0.85);
+    }
+    35% {
+      transform: scale(0.65);
+    }
+    60% {
+      transform: scale(0.4);
+    }
+    100% {
+      transform: scale(0);
+    }
+  }
+  @keyframes win-exit-coin {
+    0% {
+      transform: rotateY(720deg); /* parked on front */
+    }
+    20% {
+      transform: rotateY(920deg);
+    }
+    45% {
+      transform: rotateY(1260deg);
+    }
+    70% {
+      transform: rotateY(1740deg);
+    }
+    100% {
+      transform: rotateY(2520deg); /* spins off fast (faces blur) */
+    }
+  }
+  @keyframes win-btn-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes win-breathe {
+    0%,
+    100% {
+      filter: drop-shadow(0 0 10px rgba(216, 177, 90, 0.35))
+        drop-shadow(0 0 22px rgba(216, 177, 90, 0.18));
+    }
+    50% {
+      filter: drop-shadow(0 0 22px rgba(216, 177, 90, 0.95))
+        drop-shadow(0 0 48px rgba(216, 177, 90, 0.5));
+    }
+  }
+  /* reka-ui data-state driven overlays/dialogs/toasts: skip the tween under
+     reduced motion (the win emblem keeps its animations — full ceremony). */
+  @media (prefers-reduced-motion: reduce) {
+    .overlay[data-state='open'],
+    .overlay[data-state='closed'],
+    .dialog-content[data-state='open'],
+    .dialog-content[data-state='closed'],
+    .toast[data-state='open'],
+    .toast[data-state='closed'] {
+      animation: none;
+    }
+    /* NOTE: the win card INTENTIONALLY keeps its coin flip under reduced
+       motion too — the flip IS the victory reveal (product decision: a
+       static card reads as a bug; the user reported the missing spin). Only
+       the transient UI tweens (dialogs/toasts) are skipped above. */
+    /* The dragon-pile seal flip keeps its animation under reduced motion for
+       the SAME reason: the flip IS the 收龙 payoff — a snapped card back
+       reads as a glitch, not a seal (user reported the snap). Only the
+       transient UI tweens above are skipped. */
+  }
+
+  /* reka-ui Dialog / Toast enter-exit animations (data-state driven). */
+  .overlay[data-state='open'] {
+    animation: fade-in 0.15s ease;
+  }
+  .overlay[data-state='closed'] {
+    animation: fade-out 0.15s ease forwards;
+  }
+  .dialog-content[data-state='open'] {
+    animation: dialog-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .dialog-content[data-state='closed'] {
+    animation: dialog-out 0.2s ease forwards;
+  }
+  .toast[data-state='open'] {
+    animation: toast-in 0.25s ease;
+  }
+  .toast[data-state='closed'] {
+    animation: toast-out 0.2s ease forwards;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.85);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.85);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes toast-out {
+    to {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+  .overlay-card h2 {
+    margin: 8px 0 4px;
+    color: var(--gold);
+    letter-spacing: 2px;
+  }
+  .overlay-card p {
+    margin: 0 0 18px;
+    color: var(--ink-dim);
+  }
+  .overlay-card button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--line-hi);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  .overlay-card button:hover {
+    filter: brightness(1.1);
+  }
+
+  /* New-game confirmation dialog: two buttons side by side. */
+  .newgame-card {
+    padding: 30px 38px;
+  }
+  /* reka-ui DialogContent sits as a fixed sibling of the overlay (portal
+     target), so it carries its own centering + a z-index above BOTH overlays
+     (plain .overlay 10000, defensive .newgame-overlay 10100 — content must
+     top the confirm dialog's own layer too, else its buttons are unclickable).
+     pointer-events: auto is REQUIRED: the modal Dialog sets body
+     pointer-events:none (only the overlay opts back in), and content inherits
+     the none otherwise — every click would pass through to the overlay. */
+  .dialog-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10110;
+    pointer-events: auto;
+  }
+  /* Defensive stacking: the win overlay renders later in the DOM and both are
+     fixed full-screen layers, so without this the confirm dialog would sit
+     UNDER the win overlay and its buttons would be unclickable. (askNewGame()
+     already skips the confirm when a win is showing; this guards any future
+     path.) */
+  .overlay.newgame-overlay {
+    z-index: 10100;
+  }
+  .newgame-card .overlay-glyph {
+    font-size: 44px;
+  }
+  .newgame-card h2 {
+    margin-top: 6px;
+    font-size: 20px;
+  }
+  .dialog-actions {
+    display: flex;
+    justify-content: center;
+    /* iOS 13 / Safari 13 have no flex `gap` — the gutter comes from a margin
+       on the second button instead (works on every engine). */
+  }
+  .dialog-actions button {
+    min-width: 88px;
+  }
+  .dialog-actions button + button {
+    margin-left: 12px;
+  }
+  .dialog-actions .btn-ghost {
+    background: transparent;
+    color: var(--ink-dim);
+    border: 1px solid var(--line);
+  }
+  .dialog-actions .btn-ghost:hover {
+    color: var(--ink);
+    filter: none;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .dialog-actions .btn-primary {
+    background: var(--gold);
+    color: #1a1408;
+    font-weight: 700;
+  }
+
+  /* ---------- Toasts ---------- */
+  .toasts {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    /* Above every card animation band and both overlays; pointer-events:none
+       so it never blocks drag or dialog clicks. */
+    z-index: 10200;
+    pointer-events: none;
+  }
+  .toast {
+    background: rgba(8, 30, 24, 0.96);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  }
+  .toast-title {
+    font-weight: inherit;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (orientation: portrait) and (min-width: 561px) and (max-width: 900px) {
+    .col .card:not(:first-child) {
+      margin-top: -80px;
+    }
+  }
+
+  @media (orientation: landscape) and (max-width: 896px),
+    (max-width: 560px) {
+    html,
+    body {
+      overflow: hidden;
+    }
+
+    .game-layout {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      row-gap: 0;
+      /* Reset desktop negative-margin polyfill (would pull the strip off-screen). */
+      margin-top: 0;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .game-layout > * + * {
+      margin-left: 8px;
+    }
+    .game-layout > * {
+      margin-top: 0;
+    }
+    .toolbar-panel.side-panel {
+      margin-bottom: 0;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 56px;
+      flex-shrink: 0;
+      padding: 4px 0;
+      align-items: center;
+    }
+
+    .toolbar-panel.side-panel {
+      order: 0;
+      width: 44px;
+      flex-direction: column;
+      padding: 6px 4px;
+      border-bottom: none;
+      border-right: 1px solid var(--line);
+      background: rgba(0, 0, 0, 0.25);
+    }
+    /* Vertical toolbar — no full-bleed strip. */
+    .toolbar-panel.side-panel::before {
+      display: none;
+    }
+    .toolbar-panel.side-panel > * + * {
+      margin-top: 8px;
+    }
+    .toolbar-panel.side-panel .brand h1 {
+      display: none;
+    }
+    .toolbar-panel.side-panel .controls {
+      flex-direction: column;
+    }
+    .toolbar-panel.side-panel .controls > * + * {
+      margin-top: 6px;
+      margin-left: 0; /* reset the desktop row gutter (vertical toolbar) */
+    }
+    .toolbar-panel.side-panel .controls button,
+    .toolbar-panel.side-panel .wins-pill {
+      font-size: 11px;
+      padding: 5px 4px;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      min-width: 0;
+      width: 100%;
+    }
+    .toolbar-panel.side-panel .wins-pill {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      border: none;
+      background: transparent;
+      padding: 2px 0;
+    }
+    .toolbar-panel.side-panel .brand-glyph {
+      font-size: 18px;
+    }
+    .toolbar-panel.side-panel .dragon-btn {
+      width: 44px;
+      height: 74px;
+    }
+    .side-label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--ink-dim);
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      text-align: center;
+      margin-top: auto;
+      order: 20;
+    }
+    .right-panel .panel-content {
+      order: 0;
+    }
+    /* Mobile: free cells / foundations stack VERTICALLY inside the 56px side
+       panel. A naked `flex` utility would force a row and overflow the panel
+       (regression caught in review). Reset the desktop `margin-left` gutter
+       to `margin-top` so the stack is evenly spaced. */
+    .panel-content {
+      flex-direction: column;
+      align-items: center;
+    }
+    .panel-content > * + * {
+      margin-top: 6px;
+      margin-left: 0;
+    }
+    .panel-content .cell-group {
+      flex-direction: column;
+      align-items: center;
+    }
+    .panel-content .cell-group > * + * {
+      margin-top: 6px;
+      margin-left: 0;
+    }
+    .flower-slot {
+      order: 2;
+    }
+    .tableau {
+      flex: 1 1 auto;
+      order: 1;
+      min-width: 0;
+    }
+    .tableau {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-content: flex-start;
+      gap: var(--gap);
+    }
+    .tableau .col {
+      min-width: var(--card-w);
+      flex: 0 0 auto;
+    }
+    .col .card:not(:first-child) {
+      margin-top: -80px;
+    }
   }
 }

@@ -21,6 +21,21 @@ import type {
     NumberCard,
 } from './types';
 
+/** One atomic step of an action unit — generated AND applied by the engine,
+ *  consumed (animated) by the animation layer. The unit lifecycle is
+ *  beginUnit → stepUnit* → endUnit: each step moves exactly one card (a
+ *  dragon into the locked pile, or an auto-move into flower/foundation), so
+ *  the consumer can apply → animate → next and the data never runs ahead of
+ *  what's on screen. */
+export interface UnitAction {
+  id: string;
+  to: DestDescriptor | { type: 'dragonpile'; index: number };
+}
+
+type Unit =
+  | { kind: 'move' } // a user move: only auto-moves remain in the unit
+  | { kind: 'dragon'; color: CardColor }; // 收龙: dragon steps, then auto-moves
+
 export class SolitaireEngine {
   state: GameState;
   /** Wired by the composable; fired for every sound effect the engine emits. */
@@ -29,6 +44,8 @@ export class SolitaireEngine {
   onWin: () => void = () => {};
 
   private _winAwarded = false; // prevent double-counting wins across undo/re-move
+  /** The action unit currently being consumed (beginUnit…endUnit), or null. */
+  private unit: Unit | null = null;
 
   constructor() {
     this.state = createInitialState();
@@ -55,6 +72,13 @@ export class SolitaireEngine {
   newGame(): void {
     this.state = createInitialState();
     this._winAwarded = false;
+    // Close any unit left open by a cancelled consumption (newGame may be
+    // called mid-flight while the executor awaits): the replaced board makes
+    // the old unit's steps moot, and leaving it open would make the NEXT
+    // beginUnit('move') reuse it without snapping a fresh undo snapshot —
+    // that move would be impossible to undo. See useSolitaireGame.newGame /
+    // consumeUnit's consumeCanceled branch.
+    this.unit = null;
   }
 
   /** Restore the previous board snapshot (one step back). Re-enables win award. */
@@ -72,7 +96,9 @@ export class SolitaireEngine {
     return Rules.readyDragonColor(this.state);
   }
 
-  /** Apply a user move. Validates, snapshots, performs, auto-moves. */
+  /** Apply a user move. Validates, then performs the single user step (the
+   *  caller owns the unit lifecycle: beginUnit before, stepUnit loop for the
+   *  auto-move cascade, endUnit after). */
   move(run: Card[] | null, dest: DestDescriptor): MoveResult {
     if (!run || run.length === 0) return { ok: false, reason: 'empty' };
     const head = run[0];
@@ -102,83 +128,175 @@ export class SolitaireEngine {
     const matched = targets.some((t) => Rules.sameDest(t, dest));
     if (!matched) return { ok: false, reason: 'invalid-dest' };
 
-    // Commit: snapshot once for the whole user-action unit (incl. its auto cascade).
-    snapshot(this.state);
+    // Commit the user step only — the auto-move cascade is generated and
+    // applied one step at a time by the unit consumer (stepUnit), so the
+    // data never runs ahead of the animation. The undo snapshot was taken by
+    // beginUnit.
     this._take(loc);
     this._place(sourceCards, dest);
     this.onSound(soundFor(dest));
-    this.applyAutoMoves();
-    this.checkWin();
     return { ok: true };
   }
 
-  /** Collect all exposed dragons of `color` into a single locked free cell. */
-  collectDragons(color: CardColor): MoveResult {
-    if (!Rules.canCollectDragons(this.state, color)) {
-      return { ok: false, reason: 'not-ready' };
+  /**
+   * Begin an action unit. A unit is ONE undo step: the undo snapshot is
+   * pushed here, and the whole unit (user step + cascade, or the entire
+   * dragon collect) settles atomically — endUnit runs checkWin and the
+   * caller persists. An aborted unit (beginUnit followed by a failed move)
+   * must call abortUnit to pop the snapshot.
+   */
+  beginUnit(kind: 'move'): void;
+  beginUnit(kind: 'dragon', color: CardColor): boolean;
+  beginUnit(kind: 'move' | 'dragon', color?: CardColor): void | boolean {
+    if (kind === 'move') {
+      // A unit may already be open: the hint path snapshots the board BEFORE
+      // applying the solver's leading auto-moves, then the user step's unit
+      // continues it — one snapshot covers the whole hint action, so a
+      // single undo reverts everything (auto-moves included). Reuse it.
+      if (this.unit) return;
+      this.unit = { kind: 'move' };
+      snapshot(this.state);
+      return;
     }
-
+    const c = color!;
+    if (!Rules.canCollectDragons(this.state, c)) return false;
+    this.unit = { kind: 'dragon', color: c };
     snapshot(this.state);
-    const dragons: DragonCard[] = [];
-    for (const col of this.state.tableau) {
-      while (col.length) {
-        const top = col[col.length - 1];
-        if (!Rules.isDragon(top) || top.color !== color) break;
-        dragons.push(top);
-        col.pop();
-      }
+    return true;
+  }
+
+  /** Cancel a unit before any step was applied — pops the undo snapshot. */
+  abortUnit(): void {
+    // No-op when no unit is open: the hint path may abort on failures that
+    // never opened a unit (a cache-hit step that fails before any move), and
+    // popping history here would silently eat a legitimate undo snapshot.
+    if (!this.unit) return;
+    this.unit = null;
+    if (this.state.history.length > 0) this.state.history.pop();
+  }
+
+  /**
+   * Generate AND apply the next atomic step of the current unit (dragon
+   * steps first for a 收龙 unit, then the auto-move cascade), or null when
+   * the unit is complete. The consumer animates each returned step (the
+   * card now renders at its destination), then calls again — sequential
+   * consume and apply, data and display in lockstep.
+   */
+  stepUnit(): UnitAction | null {
+    if (!this.unit) return null;
+    if (this.unit.kind === 'dragon') {
+      const dragon = this.collectNextDragon(this.unit.color);
+      if (dragon) return dragon;
+      // All dragons collected — fall through to the auto-move cascade.
     }
+    return this.applyNextAutoMove();
+  }
+
+  /** Finish the unit: reset state and award a win if the board just won. */
+  endUnit(): void {
+    this.unit = null;
+    this.checkWin();
+  }
+
+  /** Collect all exposed dragons of `color` — begins a 收龙 unit (validates +
+   *  snapshots). The actual dragon steps are consumed via stepUnit, one
+   *  dragon per step, in engine order (columns 0→7, then free cells). */
+  collectDragons(color: CardColor): boolean {
+    return this.beginUnit('dragon', color) === true;
+  }
+
+  /** Run safe auto-moves to convergence — the no-animation path (boot /
+   *  restore), which settles the whole cascade in one synchronous pass. The
+   *  animated path consumes the same steps one at a time via stepUnit. */
+  applyAutoMoves(): void {
+    let guard = 0;
+    while (guard++ < 1000 && this.applyNextAutoMove()) {
+      // converges
+    }
+  }
+
+  /** The next auto-move step of the cascade (flower first, then safe number
+   *  runs in ascending rank order), applied — or null at convergence. */
+  private applyNextAutoMove(): UnitAction | null {
+    const m = Rules.nextAutoMove(this.state);
+    if (!m) return null;
+    const loc = Rules.findCard(this.state, m.cardId);
+    if (!loc) return null;
+    if (loc.zone === 'tableau') {
+      const card = this.state.tableau[loc.col].pop()!;
+      return this.routeAutoMove(card, m.to);
+    }
+    const card = this.state.freeCells[loc.idx] as Card;
+    this.state.freeCells[loc.idx] = null;
+    return this.routeAutoMove(card, m.to);
+  }
+
+  /** Pop the next exposed dragon of `color` (column 0→7, then free cells) and
+   *  lock it into the same-colour dragon pile — one step of a 收龙 unit. */
+  /**
+   * Next dragon step of the current 收龙 unit: FREE-CELL dragons first,
+   * then column-top dragons — NOT "columns first". Reason: the very first
+   * collected dragon must always find a destination slot. A column-top
+   * dragon collected first can land in a board with NO empty free cell
+   * (the classic layout: 3 free cells each holding a same-colour dragon +
+   * 1 column-top dragon — `canCollectDragons` allows it because a
+   * same-colour free-cell dragon counts as a merge target). pushDragon
+   * would then write to `freeCells[-1]`, a ghost index that never renders
+   * (the dragon vanishes, no animation). Free-cell dragons vacate their
+   * slot when collected, guaranteeing the fresh pile always has a home.
+   */
+  private collectNextDragon(color: CardColor): UnitAction | null {
     for (let i = 0; i < this.state.freeCells.length; i++) {
       const fc = this.state.freeCells[i];
       if (fc && fc.type !== 'dragonpile' && Rules.isDragon(fc) && fc.color === color) {
-        dragons.push(fc);
         this.state.freeCells[i] = null;
+        return this.pushDragon(fc);
       }
     }
-
-    // The locked pile may only land in a genuinely empty cell. This also covers
-    // the "merge" case: any same-colour dragon already sitting in a free cell
-    // was cleared into `dragons` above, so its slot is now null and is found
-    // here. We deliberately do NOT fall back to an occupied cell (even another
-    // dragon's) — that would clobber a different-colour card.
-    const dest = this.state.freeCells.findIndex((c) => c === null);
-    if (dest === -1) {
-      restoreSnapshot(this.state);
-      return { ok: false, reason: 'no-cell' };
+    for (const col of this.state.tableau) {
+      const top = col[col.length - 1];
+      if (top && Rules.isDragon(top) && top.color === color) {
+        col.pop();
+        return this.pushDragon(top);
+      }
     }
+    return null;
+  }
 
-    this.state.freeCells[dest] = {
-      type: 'dragonpile',
-      locked: true,
-      color,
-      cards: dragons,
-    };
+  /** Lock a dragon into the same-colour pile, or into the first empty cell as
+   *  a fresh pile. Mirrors the old bulk collect: the pile lands in a
+   *  genuinely empty cell (a same-colour free-cell dragon was cleared into
+   *  the pile above, vacating its slot). */
+  private pushDragon(d: DragonCard): UnitAction {
+    let idx = this.state.freeCells.findIndex(
+      (c) => c !== null && c.type === 'dragonpile' && c.color === d.color,
+    );
+    if (idx === -1) idx = this.state.freeCells.findIndex((c) => c === null);
+    // Defensive: canCollectDragons guarantees a destination exists (an empty
+    // free cell, or a same-colour free-cell dragon that collectNextDragon
+    // just vacated), so this is unreachable by construction. If that
+    // invariant is ever broken, fail loudly instead of writing to a ghost
+    // freeCells[-1] (the dragon would vanish without an animation — the bug
+    // the free-cell-first order exists to prevent).
+    if (idx === -1) {
+      throw new Error(`[engine] collectDragons: no free cell for the ${d.color} dragon pile`);
+    }
+    const pile = this.state.freeCells[idx];
+    if (pile && pile.type === 'dragonpile') {
+      pile.cards.push(d);
+    } else {
+      this.state.freeCells[idx] = {
+        type: 'dragonpile',
+        locked: true,
+        color: d.color,
+        cards: [d],
+      };
+    }
     this.onSound('dragon');
-    this.applyAutoMoves();
-    this.checkWin();
-    return { ok: true };
+    return { id: d.id, to: { type: 'dragonpile', index: idx } };
   }
 
-  /** Run safe auto-moves to convergence (flower + safe foundation sends). */
-  applyAutoMoves(): void {
-    let guard = 0;
-    while (guard++ < 1000) {
-      const m = Rules.nextAutoMove(this.state);
-      if (!m) break;
-      const loc = Rules.findCard(this.state, m.cardId);
-      if (!loc) break;
-      if (loc.zone === 'tableau') {
-        const card = this.state.tableau[loc.col].pop()!;
-        this.routeAutoMove(card, m.to);
-      } else {
-        const card = this.state.freeCells[loc.idx] as Card;
-        this.state.freeCells[loc.idx] = null;
-        this.routeAutoMove(card, m.to);
-      }
-    }
-  }
-
-  private routeAutoMove(card: Card, to: DestDescriptor): void {
+  private routeAutoMove(card: Card, to: DestDescriptor): UnitAction {
     if (to.type === 'flower') {
       this.state.flowerSlot = card as FlowerCard;
       this.onSound('flower');
@@ -187,9 +305,11 @@ export class SolitaireEngine {
       this.onSound('foundation');
     }
     // (nextAutoMove never emits column/freecell targets.)
+    return { id: card.id, to };
   }
 
-  private checkWin(): void {
+  /** Award the win once per real win (guarded by `_winAwarded`). */
+  checkWin(): void {
     if (Rules.isWin(this.state) && !this._winAwarded) {
       this._winAwarded = true;
       this.onWin();

@@ -35,15 +35,16 @@
 //      compressed path, so the printed "自动" lines always match reality.
 
 import {
-    canCollectDragons,
-    cloneState,
-    commitUserMove,
-    isReversibleStep,
-    isWin,
-    runAutoMoves,
-    sameDest,
-    stateKey,
-    validDropTargets,
+  canCollectDragons,
+  cloneState,
+  commitUserMove,
+  isReversibleStep,
+  isValidRun,
+  isWin,
+  runAutoMoves,
+  sameDest,
+  stateKey,
+  validDropTargets,
 } from './rules.js';
 
 /** Replay user steps (with the forced auto cascade) and check the whole path
@@ -66,6 +67,14 @@ function replayCheck(initial, leadingAuto, userSteps) {
         run = [fc];
       }
       if (run.length === 0 || !run[0]) return false;
+      // A rewrite must not break run integrity: the runtime engine re-slices
+      // the run from the SAME start index and rejects anything that is not a
+      // valid descending number run (engine.move → invalid-run). validDrop-
+      // Targets below only checks the head card, so an illegal run assembled
+      // by a detour rewrite (deleted steps shift the column) would sail
+      // through replayCheck and then fail at execution time. Mirror the
+      // engine's check exactly.
+      if (run.length > 1 && !isValidRun(run)) return false;
       const src = u.from.zone === 'tableau' ? { zone: 'tableau', col: u.from.col } : { zone: 'freecell', idx: u.from.idx };
       const targets = validDropTargets(state, run, src);
       if (!targets.some((t) => sameDest(t, u.to))) return false;

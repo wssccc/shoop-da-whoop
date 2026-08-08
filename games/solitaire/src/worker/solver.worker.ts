@@ -36,6 +36,8 @@ interface SolveResponse {
   nodes?: number;
   keySize?: number;
   elapsedMs?: number;
+  /** True when `steps` are the raw solver path (compression failed). */
+  raw?: boolean;
 }
 
 function post(msg: SolveResponse): void {
@@ -56,7 +58,31 @@ self.onmessage = (e: MessageEvent<SolveRequest>) => {
     }
     const comp = compressSteps(state, res.steps);
     if (!comp.win) {
-      post({ id, ok: false, reason: 'compress-failed', elapsedMs: Date.now() - t0 });
+      // Compression failed (fixpoint check or an illegal rewrite) — fall back
+      // to the RAW solver path instead of failing outright: solve() steps are
+      // generated from topRunStart slices so they are always legal, and the
+      // runtime engine's auto-move rules mirror the solver's exactly, so the
+      // raw path executes reliably (just less compact).
+      // NOTE: keep the FULL records (including leading {user:null} auto-move
+      // records) — useHint mirrors the solver's pre-collapsed cascade via
+      // applyAutoMoves() before the first user step; filtering them out here
+      // would make the first step's coordinates land on a stale board.
+      const rawUser = res.steps
+        .filter((s: SolverStepRecord) => s.user !== null)
+        .map((s: SolverStepRecord) => s.user);
+      if (rawUser.length === 0) {
+        post({ id, ok: false, reason: 'compress-failed', elapsedMs: Date.now() - t0 });
+        return;
+      }
+      post({
+        id,
+        ok: true,
+        steps: res.steps,
+        nodes: res.nodes,
+        keySize: res.keySize,
+        elapsedMs: Date.now() - t0,
+        raw: true,
+      });
       return;
     }
     post({

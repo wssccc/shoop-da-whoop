@@ -88,4 +88,5 @@ export type MoveFailureReason =
   | 'bad-source'
   | 'invalid-dest'
   | 'not-ready'
-  | 'no-cell';
+  | 'no-cell'
+  | 'busy'; // rejected while an action unit is being consumed (or the deal is landing)
