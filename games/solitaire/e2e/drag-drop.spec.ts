@@ -7,7 +7,10 @@
 //   3. Dragging over legal targets toggles `.drop-ok` highlight; the
 //      highlighted rect is the pile rect (not stretched to the row
 //      height), and the empty-column rect is the outline box.
-//   4. Dragging into the gap BELOW a short pile no longer hits the column.
+//   4. A tableau column's HIT rect is its FULL drop zone: the pile rect
+//      extended DOWN to the viewport bottom — the empty space below a short
+//      pile still hits the column (while the highlight stays on the pile
+//      rect, which never stretches). Below the viewport: no hit.
 //   5. The drop candidate is the HEAD card's geometric center, not the
 //      pointer: a corner/edge grab highlights the slot under the CARD (and
 //      releases into it), even when the pointer sits outside that slot.
@@ -139,8 +142,9 @@ test.describe('drag drop-zones & highlight', () => {
     expect(Math.round(col0Rect.h)).toBe(Math.round(H));
     expect(Math.round(col0Rect.w)).toBe(Math.round(W));
 
-    // 4) Into the gap BELOW col-3's pile (inside the row, outside the pile
-    //    rect): no column hit.
+    // 4) Into the empty space BELOW col-3's pile (inside the row, outside the
+    //    pile rect, but still inside the column's EXTENDED drop zone — down
+    //    to the viewport bottom): the column still hits.
     const below = await page.evaluate(() => {
       const col = document.querySelector('.slot.col[data-slot="col-3"]') as HTMLElement;
       const r = col.getBoundingClientRect();
@@ -150,7 +154,7 @@ test.describe('drag drop-zones & highlight', () => {
     });
     await page.mouse.move(below.x, below.y, { steps: 4 });
     await page.waitForTimeout(60);
-    expect(await dropOkState()).toEqual([]);
+    expect(await dropOkState()).toEqual(['col-3']);
 
     // 5) Release over fc-0 → the card lands there (drag stays intact).
     await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2, { steps: 4 });
@@ -220,6 +224,41 @@ test.describe('drag drop-zones & highlight', () => {
     await expect(page.locator('.slot.free-cell[data-slot="fc-0"] .card')).toHaveAttribute('data-id', 'n-black-4');
 
     expect(offX).toBeGreaterThan(0); // sanity: offset math above assumed it
+  });
+
+  test('empty space below a pile hits the column; below the viewport it does not', async ({ page }) => {
+    await seedSave(page, makeDropSave(), ['n-black-4', 'n-red-5']);
+    await expectSettled(page);
+
+    const src = await page.locator('.slot.col[data-slot="col-5"] .card').boundingBox();
+    const col3 = await page.locator('.slot.col[data-slot="col-3"]').boundingBox();
+    const viewport = page.viewportSize()!;
+
+    const dropOkState = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.slot.drop-ok')].map((s) => s.getAttribute('data-slot')),
+      );
+
+    // Center grab of the single card in col-5.
+    await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+    await page.mouse.down();
+
+    // 1) Card center DEEP BELOW col-3's 2-card pile (160px into the empty
+    //    space, still inside the viewport): the column's extended drop zone
+    //    hits — col-3 highlights (the old pile-rect test would not).
+    await page.mouse.move(col3.x + col3.width / 2, col3.y + col3.height + 160, { steps: 8 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toEqual(['col-3']);
+
+    // 2) Card center BELOW the viewport bottom: the zone ends there — no hit.
+    await page.mouse.move(col3.x + col3.width / 2, viewport.height + 120, { steps: 8 });
+    await page.waitForTimeout(60);
+    expect(await dropOkState()).toEqual([]);
+
+    // 3) Release down there: nothing is targeted, the card settles back home.
+    await page.mouse.up();
+    await expectSettled(page);
+    await expect(page.locator('.slot.col[data-slot="col-5"] .card')).toHaveAttribute('data-id', 'n-black-4');
   });
 
   test('mid-drag scroll re-anchors the drop candidate to the CARD', async ({ page }) => {

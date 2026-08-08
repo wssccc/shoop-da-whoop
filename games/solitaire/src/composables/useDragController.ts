@@ -26,12 +26,15 @@ export const FLIP_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
 /** A drop target captured at drag start: element + its layout rect. */
 interface DragSlot {
   el: HTMLElement;
-  /** Rect cached at pointerdown. Mid-drag the board layout is static — cards
-   * travel via transform only, so nothing moves in layout space. Reading the
-   * live rect every pointermove would force a synchronous style+layout flush
-   * right after the park-transform write dirtied them (a forced reflow per
-   * frame). Caching kills that; an actual scroll (rare mid-drag) refreshes it. */
+  /** The element's own layout rect (the PILE rect for a tableau column).
+   * Drives the visual `.drop-ok` highlight — the ring stays on the pile and
+   * never stretches into the empty space below it. */
   rect: DOMRect;
+  /** The HIT-TEST rect. For tableau columns this is the FULL column drop
+   * zone: the pile rect extended DOWN to the viewport bottom, so the empty
+   * space below a short pile still counts as that column's candidate. Every
+   * other slot type hit-tests its own (card-sized) rect. */
+  hitRect: { left: number; right: number; top: number; bottom: number };
 }
 
 interface DragState {
@@ -75,11 +78,13 @@ function parseSlot(str: string | null | undefined): DestDescriptor | null {
  * out of sync.
  *
  * `slots` is captured once per drag (see DragState.slots) so we never re-query
- * the selector on every pointermove.
+ * the selector on every pointermove. Hit-tests run against each slot's
+ * `hitRect` (see DragSlot) — the extended column drop zone for tableau
+ * columns, the plain rect for every other slot.
  */
 function slotAtPoint(x: number, y: number, slots: DragSlot[]): HTMLElement | null {
   for (const s of slots) {
-    const r = s.rect;
+    const r = s.hitRect;
     if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return s.el;
   }
   return null;
@@ -202,9 +207,23 @@ export function useDragController(
       targets: Rules.validDropTargets(state, run),
       // Capture element + layout rect in one pass — the board layout cannot
       // change mid-drag (cards move via transform only), so these stay valid
-      // until release (or a scroll, which refreshes them).
+      // until release (or a scroll, which refreshes them). Tableau columns
+      // get an EXTENDED hit rect — the pile rect stretched down to the
+      // viewport bottom, so the empty space below a short pile still counts
+      // as a drop candidate. The visual highlight keeps using the element's
+      // own rect (the pile), which never stretches.
       slots: Array.from(document.querySelectorAll<HTMLElement>('#board [data-slot]')).map(
-        (el) => ({ el, rect: el.getBoundingClientRect() }),
+        (el) => {
+          const rect = el.getBoundingClientRect();
+          const isColumn = (el.dataset.slot ?? '').startsWith('col-');
+          return {
+            el,
+            rect,
+            hitRect: isColumn
+              ? { left: rect.left, right: rect.right, top: rect.top, bottom: window.innerHeight }
+              : rect,
+          };
+        },
       ),
       hover: null,
       hoverEl: null,
@@ -350,13 +369,19 @@ export function useDragController(
     { passive: false },
   );
   // If a scroll still sneaks through (keyboard / programmatic), refresh the
-  // cached slot rects AND re-anchor the head card from a live rect so the hit
-  // test keeps tracking the card's visual position. Otherwise a normal drag
-  // stays completely reflow-free.
+  // cached slot rects (both visual and hit rects) AND re-anchor the head card
+  // from a live rect so the hit test keeps tracking the card's visual
+  // position. Otherwise a normal drag stays completely reflow-free.
   useEventListener(window, 'scroll', () => {
     const d = drag.value;
     if (!d) return;
-    for (const s of d.slots) s.rect = s.el.getBoundingClientRect();
+    for (const s of d.slots) {
+      const r = s.el.getBoundingClientRect();
+      s.rect = r;
+      s.hitRect = (s.el.dataset.slot ?? '').startsWith('col-')
+        ? { left: r.left, right: r.right, top: r.top, bottom: window.innerHeight }
+        : r;
+    }
     const head = d.origs[0];
     if (head?.isConnected) {
       // Re-anchor to the head card's LAYOUT center (visual center minus the

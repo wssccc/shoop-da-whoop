@@ -118,7 +118,7 @@
 | **run** | 抓取序列 | 玩家从 tableau 一次性抓起的整段连续牌（受 `isValidRun` 约束） | `Rules.grabRunFromTableau` |
 | **drag controller** | 拖拽控制器 | 处理 pointer down/move/up 与落点命中、阴影 ghost 跟随、落定后调用 `moveCard` | `useDragController.ts` |
 | **ghost** | 拖拽残影 | 跟随指针的卡牌浮层；用 `position: absolute` + document 坐标，pinch-zoom 下也对齐 | `useDragController` 内 `.card.ghost` |
-| **slotAtPoint** | 几何落点命中 | 用 `getBoundingClientRect` 手动做几何命中，替换 `elementFromPoint`（后者在 CSS zoom/transform 下漂移）；命中点 = 被拖 run 头牌中心（抓取锚点 + 位移），非指针位置 | `useDragController.slotAtPoint` |
+| **slotAtPoint** | 几何落点命中 | 用 `getBoundingClientRect` 手动做几何命中，替换 `elementFromPoint`（后者在 CSS zoom/transform 下漂移）；命中点 = 被拖 run 头牌中心（抓取锚点 + 位移），非指针位置；列命中区 = 列宽 × (列顶 → 视口底)（含下方空闲区，空列同样扩展），高亮仍为牌堆 rect | `useDragController.slotAtPoint` |
 | **shake** | 抖动反馈 | 非法落点被拒时给卡牌一个短暂的 shake 动画 | `useDragController` 内 `.shake` |
 | **hint** | 提示一步 | 当前局面有解时，自动执行 solver 解的第一步（user step + 其 cascade） | `useHint.hintOnce` |
 | **toast** | 浮层提示 | reka-ui 风格的瞬态消息（无解 / 求解失败 / 收龙失败等），单条 `id` 替换、自动消失 | `lib/toaster.ts` |
