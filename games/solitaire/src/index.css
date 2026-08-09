@@ -168,10 +168,17 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  /* The game is a fixed, non-scrolling layout (drag already uses
-     touch-action:none); never show scrollbars even if the viewport is smaller
-     than the board — content that doesn't fit is simply clipped. */
+  width: 100%;
+  /* Fixed, non-scrolling layout: pin the body to the viewport so no
+     programmatic/gesture scroll can ever move the board (the drag layer is
+     pointer-event based with touch-action:none on the cards; the win-stage
+     overlays and toasts are absolute/fixed and unaffected). Overscroll
+     chaining (pull-to-refresh, iOS rubber-band) is disabled declaratively —
+     iOS Safari < 16 ignores this, the useGestureLock touchmove handler is
+     the runtime backstop. */
+  position: fixed;
   overflow: hidden;
+  overscroll-behavior: none;
   background: radial-gradient(
     140% 120% at 50% -10%,
     var(--felt) 0%,
@@ -183,9 +190,9 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
-  /* manipulation = pan + pinch-zoom allowed, but the browser's default
-     double-tap-to-zoom is disabled (fast taps, no 300ms delay). */
-  touch-action: manipulation;
+  /* none = pan + pinch-zoom + double-tap-zoom all disabled. The board is a
+     fixed layout, so no scrolling gesture has any legitimate target. */
+  touch-action: none;
   -webkit-touch-callout: none;
 }
 

@@ -261,18 +261,17 @@ test.describe('drag drop-zones & highlight', () => {
     await expect(page.locator('.slot.col[data-slot="col-5"] .card')).toHaveAttribute('data-id', 'n-black-4');
   });
 
-  test('mid-drag scroll re-anchors the drop candidate to the CARD', async ({ page }) => {
+  test('body is pinned (position:fixed): mid-drag programmatic scroll is blocked', async ({ page }) => {
     await seedSave(page, makeDropSave(), ['n-black-4', 'n-red-5']);
     await expectSettled(page);
 
     const src = await page.locator('.slot.col[data-slot="col-5"] .card').boundingBox();
     const fc0 = await page.locator('.slot.free-cell[data-slot="fc-0"]').boundingBox();
 
-    // Make the viewport scroollable without shifting the board layout: an
-    // absolutely-positioned tall spacer is out of flow. (html/body are
-    // overflow:hidden, but programmatic scrollTo still works on overflowing
-    // content — the only scroll path a mid-drag keyboard/programmatic scroll
-    // could ever take.)
+    // Even with overflowing content present, the fixed body must not scroll:
+    // an absolutely-positioned tall spacer (containing block = the pinned
+    // body) is clipped by overflow:hidden and can never make the page
+    // scrollable — scrollTo below is the check.
     await page.evaluate(() => {
       const spacer = document.createElement('div');
       spacer.style.cssText =
@@ -293,32 +292,22 @@ test.describe('drag drop-zones & highlight', () => {
     await page.waitForTimeout(60);
     expect(await dropOkState()).toEqual(['fc-0']);
 
-    // Scroll the page 120px mid-drag. The card travels WITH the page, so its
-    // candidate point must still sit on fc-0 — the scroll handler must
-    // re-anchor to the card's LAYOUT center (visual center − translate), or
-    // the next hit would be offset by the whole drag vector (dx, dy).
+    // Attempt a programmatic scroll mid-drag: the pinned body refuses it, so
+    // the board never moves and the drop candidate stays put on fc-0. This
+    // asserts the LOCK (scrollY stays 0 — before the body was pinned this
+    // test used the same scrollTo to verify re-anchoring at scrollY = 120).
     await page.evaluate(() => window.scrollTo(0, 120));
-    // Scroll position must actually change: html/body are overflow:hidden,
-    // so this is the key check that the programmatic scroll (and thus the
-    // scroll handler) really ran — otherwise this test is vacuously green.
-    expect(await page.evaluate(() => window.scrollY)).toBe(120);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await page.waitForTimeout(60);
 
-    // Move the pointer again (scroll happened mid-drag — the user keeps
-    // dragging!). Scroll moves the CARD and the SLOTS together (both −120px
-    // in viewport coords), so parking the card back over fc-0 means returning
-    // the pointer to the SAME viewport position as before the scroll —
-    // the card then sits at the slot's scrolled center. Wiggle the pointer
-    // first so a fresh pointermove fires, then park it back.
-    // (Without the re-anchor fix, the next pointermove hit-tests from a
-    // stale visual-center anchor plus the whole drag vector — nothing
-    // highlights and the release below reverts.)
+    // The pointer stays parked (nothing scrolled); wiggle it first so a fresh
+    // pointermove fires, then park it back — the candidate is still fc-0.
     await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2 + 60, { steps: 4 });
     await page.mouse.move(fc0.x + fc0.width / 2, fc0.y + fc0.height / 2, { steps: 4 });
     await page.waitForTimeout(60);
     expect(await dropOkState()).toEqual(['fc-0']);
 
-    // Release: the re-anchored candidate commits into fc-0.
+    // Release: the candidate commits into fc-0.
     await page.mouse.up();
     await expectSettled(page);
     await expect(page.locator('.slot.free-cell[data-slot="fc-0"] .card')).toHaveAttribute('data-id', 'n-black-4');

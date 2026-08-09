@@ -25,7 +25,8 @@
 │                      App.vue (入口组件)                       │
 │   useSolitaireGame (游戏控制器 + unit 执行器)                  │
 │   useDealing / useDragController / useHint / useAudio        │
-│   useAchievements / Card / CardBack / WinCard / Toaster      │
+│   useGestureLock / useAchievements / Card / CardBack /      │
+│   WinCard / Toaster                                          │
 └──┬──────────────────────┬───────────────────┬───────────────┘
    │ 发布 state (shallowRef) │ 事件回调            │ 动画
    ▼                       ▼                   ▼
@@ -246,7 +247,7 @@ pointerup   → 若命中合法 → game.moveCard(run, dest)（成功则 250ms �
 
 **真牌跟随**：拖拽时把 REAL 牌直接加 `translate(dx, dy)` 内联变换（`transition: none`，逐帧即时）；`is-dragging` 类做 z-index 抬升 + `will-change: transform` 独立合成层。原始卡片添加 `is-dragging` 类使其半透明。
 
-**目标检测**：落点候选点 = 被拖 run **头牌的几何中心**（pointerdown 时 rect 中心 + 位移 (dx,dy)，纯算术零 reflow），**而非指针位置**——角点抓牌时高亮跟随牌的视觉位置而非手指，松开落点也按牌心提交。`slotAtPoint()` 遍历 `[data-slot]` 用 `getBoundingClientRect()` 做手动几何命中（**不用** `elementFromPoint`，避免页面缩放 / 祖先 transform 下的坐标漂移，见 memories/drag-hit-test-zoom.md）。拖动中**禁止滚动**（wheel preventDefault + 拖动牌 `touch-action: none`）；漏网的 scroll（键盘/程序化）会同时刷新槽矩形并重锚头牌中心。
+**目标检测**：落点候选点 = 被拖 run **头牌的几何中心**（pointerdown 时 rect 中心 + 位移 (dx,dy)，纯算术零 reflow），**而非指针位置**——角点抓牌时高亮跟随牌的视觉位置而非手指，松开落点也按牌心提交。`slotAtPoint()` 遍历 `[data-slot]` 用 `getBoundingClientRect()` 做手动几何命中（**不用** `elementFromPoint`，避免页面缩放 / 祖先 transform 下的坐标漂移，见 memories/drag-hit-test-zoom.md）。拖动中**禁止滚动**（wheel preventDefault + 拖动牌 `touch-action: none`）；body 已 `position:fixed` + 全局 `touch-action:none`（见 §3.13 `useGestureLock`），scroll 不可能发生——`useDragController` 的 `window 'scroll'` 监听仅作惰性防御保留（一旦 scroll 漏网，会刷新槽矩形并重锚头牌中心）。
 
 **列命中区扩展**：tableau 列的**命中矩形** = 列宽 × (列顶 → 视口底)——短堆下方的空闲区仍算该列候选（空列同样扩展）；fc/found/flower 仍按牌尺寸 rect 命中。**高亮视觉与命中解耦**：`.drop-ok` 仍加在槽元素上，ring 只覆盖元素自身 rect（= 牌堆 rect），不伸入空闲区。
 
@@ -302,7 +303,20 @@ useAchievements(wins) → 监听胜局数变化 → checkAchievements → toast(
 
 ### 3.12 `src/main.ts` + `src/App.vue` — 入口
 
-**职责**：`main.ts` 仅创建 Vue 应用挂载 `#root`；`App.vue` 组装所有 composable（`useSolitaireGame` / `useHint` / `useDealing` / `useDragController` / `useAudio` / `useAchievements` / `useFullscreen`），绑定工具栏按钮与 reka-ui Dialog（新局确认），渲染棋盘、锁定龙堆与 WinCard。
+**职责**：`main.ts` 仅创建 Vue 应用挂载 `#root`；`App.vue` 组装所有 composable（`useSolitaireGame` / `useHint` / `useDealing` / `useDragController` / `useAudio` / `useAchievements` / `useGestureLock` / `useFullscreen`），绑定工具栏按钮与 reka-ui Dialog（新局确认），渲染棋盘、锁定龙堆与 WinCard。
+
+### 3.13 `src/composables/useGestureLock.ts` — 全局手势锁
+
+**职责**：声明式 CSS 无法覆盖的旧 iOS 行为的运行时兜底。在 `App.vue` 挂载一次（VueUse `useEventListener` 自动清理）。
+
+| 拦截目标 | 机制 | 原因 |
+| --- | --- | --- |
+| 滚动 / 下拉刷新 / 回弹 / 双指平移 | `document` `touchmove` `preventDefault`（`passive:false`） | iOS 16 前不支持 `overscroll-behavior`；`touch-action:none` 不拦多指 touchmove |
+| 双指捏合缩放 | `gesturestart/change/end` `preventDefault`（Safari 私有事件） | iOS 10+ 忽略 `user-scalable=no`；pinch 走 Safari 私有 gesture 事件，不受 `touch-action` 影响 |
+| 双击缩放 | `touchend` 300ms 内第二次 `preventDefault` | 抑制第二次 tap 合成的 click（副作用：触摸 300ms 内连点按钮只触发一次，busy 锁已兜底） |
+| 长按 / 右键菜单 | `contextmenu` `preventDefault` | 禁用"保存图片 / 打开链接 / 检查" |
+
+**安全性**：拖拽走 Pointer Events（`pointermove` 不受 `touchmove` preventDefault 影响）；棋盘无可滚动区域，全局 touchmove 拦截无损失。配合 `index.css` 的 `html,body { position:fixed; overflow:hidden; overscroll-behavior:none; touch-action:none }`（声明式层），`useGestureLock` 是旧 iOS 的运行时第二道闸。
 
 ---
 
@@ -441,7 +455,7 @@ all foundations[color].length == 9  // 所有终局槽满
 ### 6.2 拖拽系统
 
 - **真牌跟随（无 ghost 克隆）**：拖拽时把 REAL 牌直接加 `translate(dx, dy)` 内联变换（`transition: none`，逐帧即时）——`is-dragging` 类只做 z-index 抬升 + `will-change: transform` 独立合成层
-- **目标检测**：落点候选点 = 头牌几何中心（抓取时锚点 + (dx,dy)，纯算术），**非指针位置**；`slotAtPoint()` 手动几何命中（**不用** `elementFromPoint`，见 memories/drag-hit-test-zoom.md）；拖动中禁止滚动（wheel preventDefault + `touch-action: none`）；列命中区 = 列宽 × (列顶 → 视口底)（短堆下方空闲区可命中，空列同样扩展），高亮 `.drop-ok` 仍只覆盖牌堆 rect
+- **目标检测**：落点候选点 = 头牌几何中心（抓取时锚点 + (dx,dy)，纯算术），**非指针位置**；`slotAtPoint()` 手动几何命中（**不用** `elementFromPoint`，见 memories/drag-hit-test-zoom.md）；拖动中禁止滚动（wheel preventDefault + `touch-action: none`；body 已 `position:fixed` + 全局手势锁见 §3.13，scroll 不可能发生）；列命中区 = 列宽 × (列顶 → 视口底)（短堆下方空闲区可命中，空列同样扩展），高亮 `.drop-ok` 仍只覆盖牌堆 rect
 - **合法释放**：`moveCard` 校验 + 开 unit + 提交（引擎只做 user step）；commit 后牌保持释放点（parked transform），Vue 将其渲染到目标槽位后，用一条 `FLIP_SETTLE_MS`（250ms）`cubic-bezier(0.2,0.8,0.2,1)` CSS transition 从释放点滑到最终位置（归位滑动）；有级联时 250ms 后由 `consumeUnit` 接管逐张飞行，无级联时不设 busy 锁（允许快速连招）
 - **非法释放**：先强制 recalc 提交 parked transform，再过渡回原位（250ms 同曲线）+ `error` 音效
 - **高亮反馈**：合法目标添加 `drop-ok` 类（绿色边框发光），非法目标无反馈
@@ -569,7 +583,8 @@ solitaire/
 │   │   ├── useDragController.ts  # 拖拽交互（真牌跟随 + slotAtPoint）
 │   │   ├── useHint.ts            # 提示（worker 求解 + 缓存 + 逐步执行）
 │   │   ├── useAudio.ts           # Web Audio 合成音效
-│   │   └── useAchievements.ts    # 成就 UI 桥接（toast）
+│   │   ├── useAchievements.ts    # 成就 UI 桥接（toast）
+│   │   └── useGestureLock.ts     # 全局手势锁（禁选择/缩放/滚动，旧 iOS 兜底）
 │   ├── components/
 │   │   ├── Card.vue / CardBack.vue / WinCard.vue
 │   │   └── Toaster.vue / GlyphIcon.vue

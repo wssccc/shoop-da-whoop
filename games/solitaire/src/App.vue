@@ -40,6 +40,7 @@ import { useAchievements } from './composables/useAchievements';
 import { useAudio } from './composables/useAudio';
 import { useDealing } from './composables/useDealing';
 import { useDragController } from './composables/useDragController';
+import { useGestureLock } from './composables/useGestureLock';
 import { useHint } from './composables/useHint';
 import { useSolitaireGame } from './composables/useSolitaireGame';
 
@@ -47,6 +48,10 @@ const boardRef = ref<HTMLElement | null>(null);
 
 // Wire the singleton audio's visibility-driven auto-resume.
 useAudio();
+
+// Global gesture lock: no text selection, pinch/double-tap zoom, scroll or
+// long-press menus anywhere on the board (CSS layer + runtime backstop).
+useGestureLock();
 
 const game = useSolitaireGame();
 const hint = useHint(game);

@@ -368,10 +368,13 @@ export function useDragController(
     },
     { passive: false },
   );
-  // If a scroll still sneaks through (keyboard / programmatic), refresh the
-  // cached slot rects (both visual and hit rects) AND re-anchor the head card
-  // from a live rect so the hit test keeps tracking the card's visual
-  // position. Otherwise a normal drag stays completely reflow-free.
+  // Defense-in-depth: the body is pinned (position:fixed + touch-action:none
+  // + useGestureLock), so scroll can never occur and this listener is inert.
+  // Kept as a backstop: IF a scroll ever sneaks through (keyboard / programmatic
+  // on some future UA), refresh the cached slot rects (both visual and hit
+  // rects) AND re-anchor the head card from a live rect so the hit test keeps
+  // tracking the card's visual position. Otherwise a normal drag stays
+  // completely reflow-free.
   useEventListener(window, 'scroll', () => {
     const d = drag.value;
     if (!d) return;
