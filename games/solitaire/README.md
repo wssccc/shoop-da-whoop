@@ -46,7 +46,7 @@ games/solitaire/
 │   ├── render.js       # DOM 渲染（全量重建）
 │   ├── anim.js         # FLIP 位移动画 + 缓动常量
 │   ├── input.js        # 拖拽交互（pointer 事件）
-│   ├── audio.js        # Web Audio 合成音效
+│   ├── audio.js        # howler 文件音效（重构后：src/lib/audio.ts + src/composables/useAudio.ts，资源 public/sfx/*.mp3）
 │   ├── storage.js      # localStorage 持久化
 │   ├── achievements.js # 成就里程碑检测
 │   └── constants.js    # 全局常量

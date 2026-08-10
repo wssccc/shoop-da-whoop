@@ -136,13 +136,13 @@ test.describe('win card', () => {
     expect(info.frontFaceVisible).toBe('visible');
     expect(info.backFaceHidden).toBe('hidden');
     expect(info.preserve3d).toBe(true);
-    // Same aspect ratio as a tableau card (140×198 ≈ 0.706), sized at 50%
-    // of the viewport height (dvh == vh in the headless viewport). The
-    // absolute size breathes (win-breathe scales the emblem), so only the
-    // ratio and the 50vh bound are asserted. ±0.5px tolerance — subpixel
-    // rounding must not flake the suite.
+    // Same aspect ratio as a tableau card (140×198 ≈ 0.706), sized at 37.5%
+    // of the viewport height (75% of the original 50vh; dvh == vh in the
+    // headless viewport). The absolute size breathes (win-breathe scales
+    // the emblem), so only the ratio and the 37.5vh bound are asserted.
+    // ±0.5px tolerance — subpixel rounding must not flake the suite.
     expect(info.cardW / info.cardH).toBeCloseTo(140 / 198, 1);
-    expect(info.cardH).toBeCloseTo(info.innerH / 2, 0);
+    expect(info.cardH).toBeCloseTo(info.innerH * 0.375, 0);
     expect(info.cardW).toBeGreaterThan(110);
     expect(info.btnText).toBe('再来一局');
     expect(info.centered).toBe(true);

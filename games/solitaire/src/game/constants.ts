@@ -34,7 +34,9 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
   { id: 'immortal', name: '成仙 · Become Immortal', threshold: 100 },
 ];
 
-// Sound effect names the engine may emit. (`error` is UI-only, not enumerated.)
+// Sound effect names the engine may emit. (`error` is UI-only, not
+// enumerated; dealing audio is not engine-driven either — useDealing fires
+// Audio.whoosh() per flying card.)
 export type EngineSoundName =
   | 'move'
   | 'place'

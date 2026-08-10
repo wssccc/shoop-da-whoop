@@ -39,13 +39,13 @@ type Unit =
 export class SolitaireEngine {
   state: GameState;
   /** Wired by the composable; fired for every sound effect the engine emits. */
-  onSound: (name: EngineSoundName) => void = () => {};
+  onSound: (name: EngineSoundName) => void = () => { };
   /** Wired by the composable; fired once per real win (guarded by
    *  `_winAwarded`). Receives the LAST collected card — the one whose
    *  landing completed the board (a user-placed foundation card, the final
    *  auto-move, or the last dragon) — so the UI can key the celebration
    *  off it. */
-  onWin: (lastCard: Card | null) => void = () => {};
+  onWin: (lastCard: Card | null) => void = () => { };
 
   private _winAwarded = false; // prevent double-counting wins across undo/re-move
   /** The last card that landed in a final zone (foundation / flower / dragon
@@ -90,6 +90,9 @@ export class SolitaireEngine {
     // that move would be impossible to undo. See useSolitaireGame.newGame /
     // consumeUnit's consumeCanceled branch.
     this.unit = null;
+    // No 'deal' sound event: the dealing audio is the per-card whoosh fired
+    // by useDealing's fly-in (it watches justDealt, which newGame's caller
+    // flips right after this) — the animation layer owns that timing.
   }
 
   /** Restore the previous board snapshot (one step back). Re-enables win award. */

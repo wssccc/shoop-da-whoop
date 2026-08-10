@@ -251,29 +251,44 @@ pointerup   → 若命中合法 → game.moveCard(run, dest)（成功则 250ms �
 
 **列命中区扩展**：tableau 列的**命中矩形** = 列宽 × (列顶 → 视口底)——短堆下方的空闲区仍算该列候选（空列同样扩展）；fc/found/flower 仍按牌尺寸 rect 命中。**高亮视觉与命中解耦**：`.drop-ok` 仍加在槽元素上，ring 只覆盖元素自身 rect（= 牌堆 rect），不伸入空闲区。
 
-### 3.9 `src/composables/useAudio.ts` — 音效系统
+### 3.9 音效系统（howler + 预制 mp3）
 
-**职责**：Web Audio API 合成芯片音效（chiptune），无外部音频文件。
+**职责**：播放预制音效文件（`public/sfx/*.mp3`），由 howler.js 驱动。所有文件由
+`tools/audio/build-sfx.mjs`（`npm run sfx`）离线渲染——参数即原 `tone()` 合成参数
+（6ms 起音 + 指数衰减），峰值归一化到 -3 dBFS，mp3 CBR 160k mono。
 
 **音效表**：
 
-| 音效 | 触发场景 | 合成参数 |
+| 音效 | 触发场景 | 源参数（渲染脚本） |
 | --- | --- | --- |
+| `whoosh` | 发牌动画每张卡起飞（`useDealing` 逐卡触发，非引擎事件；播放音量 0.45） | 200→600→300Hz 扫频 chirp（0.06s + 0.08s 双段） |
 | `move` | 牌移入空闲格 | 520Hz triangle, 50ms |
 | `place` | 牌移入其他列 | 330Hz sine, 60ms |
 | `foundation` | 牌入终局槽 | 660Hz + 880Hz 双音 |
-| `dragon` | 收龙 | 180Hz sawtooth + 120Hz sine |
+| `dragon` | 收龙 | 520/660/880Hz triangle/sine 三音上行琶音（"龙归位"铃声，区别于 error 嗡鸣） |
 | `flower` | 花牌自动归位 | 740Hz + 988Hz |
 | `win` | 胜利 | C-E-G-C 上行琶音 |
-| `error` | 非法操作 | 150Hz square |
+| `error` | 非法操作（UI 层） | 100Hz triangle, 150ms |
+
+> 无独立 `deal` 音效：新局发牌动画的音效由 `whoosh` 承担（`useDealing` 在每张卡
+> 起飞时逐卡触发，不经引擎事件）。
 
 **实现细节**：
 
-- 延迟创建 `AudioContext`（按需）、延迟创建 `master` 增益节点
-- 用户手势后调用 `resume()` 解除浏览器自动播放限制
-- 所有音效通过 `tone(freq, dur, type, gain, delay)` 合成，使用 `oscillator` + `gain` 节点包络（exponentialRamp 衰减）
-- **主总线 + 限幅器**：`voice → 每 tone 的 gain → master gain(0.6) → DynamicsCompressor(限幅) → destination`。限幅器在自动归位级联多层音叠加时软削波，避免增益叠加 > 1.0 产生磨机音/爆音
-- **避免咔哒声**：每个 tone 在 `t0` 先 `setValueAtTime(0)` 重置增益，防止 GainNode 默认 1.0 导致首个样本以满音量泄漏（=咔哒声）；节点 `stop` 后断开以释放内存
+- `src/lib/audio.ts`：howler 封装，无 Vue import（预留抽取 shared/）。SOUNDS registry
+  映射音效名 → `/sfx/<name>.mp3`（绝对路径，与 `/images/` 约定一致）；
+  `Howler.volume(0.8)` 全局音量；`setMuted` → `Howler.mute()`（存储键 `szsol.muted` 不变）。
+- `src/composables/useAudio.ts`：薄壳。保留 iOS 自动恢复——`useDocumentVisibility`
+  watch 到页面回前台时 `resume()`（iOS Safari 挂起 AudioContext 不自动恢复，
+  见 memories/ios-webaudio-suspended-leak.md）；`resume()` 双保险（立即 + 下一 tick）。
+- **挂起防护**：`play()` 在 muted 时不调度；howler 对挂起 ctx 不堆节点（相比旧版
+  振荡器守卫，机制上由 howler 内部管理）。
+- **爆音防护**：文件首尾自带包络（0 → 0.0001），无调度竞态；同一 Howl 多实例
+  池化重叠播放（自动归位级联）经 howler 增益调度，不叠加削波。
+- 引擎通过 `onSound(name)` 发事件（`EngineSoundName`：move / place /
+  foundation / dragon / flower / win），`useSolitaireGame` 的 switch 映射到
+  `Audio.*`；发牌音效不经引擎——`useDealing` 在每张卡起飞时直接调
+  `Audio.whoosh()`（动画层直连音频层，无独立 `deal` 音效）。
 
 ### 3.10 `src/storage.ts` — 持久化
 
@@ -472,7 +487,7 @@ all foundations[color].length == 9  // 所有终局槽满
 - **3D 翻转卡**（`WinCard.vue` 内联结构，替换原 🃏 emoji）：`.win-scene`（perspective 根，**`calc(var(--win-card-h) × 3)`** 等比缩放——原 600px ≈ 3×198px 卡高）→ `.win-card`（`transform-style:preserve-3d`，`rotateY` 翻转）→ 双面 `.face`（`backface-visibility:hidden`）
   - **背面** `.face.back`（`rotateY(180deg)`）：共享扑克牌背 `<img src="/images/card-back.svg">`（与锁定龙牌堆同一文件，蓝底圆环纹 + 花环边框 + 中央徽章，`object-fit:contain`）
   - **正面** `.face.front`（`rotateY(0)`）：胜利动图**按收官牌哈希选取**（`src/lib/winGif.ts`：djb2(card.id) mod 3 → `/images/1.gif` / `2.gif` / `3.gif`，确定性——同一收官牌永远同一张动图；引擎 `onWin(lastCard)` 传出最后落定牌），`width:100% + height:auto`（三张 gif **统一宽度**、各自原比例——1.gif 方形 / 2.gif 4:3 / 3.gif 横幅，纵向留白由纸面 flex 垂直居中承载）+ 纸面 **`padding:10%` + `box-sizing:border-box`**（gif 与纸面边缘留出 ~10% 宽的 margin，随响应式缩放），纸色米白底（`#efe9d8`）+ 金描边
-  - 尺寸：全端统一 `--win-card-h: 50vh`（`@supports (height: 50dvh)` 下用 `50dvh`，iOS Safari 地址栏感知；iOS 13 自动回退 vh），宽 = `calc(var(--win-card-h) × 0.70707)`（保持桌牌 140×198 比例 ≈0.707，读取为同一副牌，只是更大；**不再有 560px 断点覆写**）；index.html 预载全部三张 gif（~719KB）防首胜闪烁
+  - 尺寸：全端统一 `--win-card-h: 37.5vh`（= 原 50vh 的 75%；`@supports (height: 50dvh)` 下用 `37.5dvh`，iOS Safari 地址栏感知；iOS 13 自动回退 vh），宽 = `calc(var(--win-card-h) × 0.70707)`（保持桌牌 140×198 比例 ≈0.707，读取为同一副牌，只是更大；**不再有 560px 断点覆写**）；index.html 预载全部三张 gif（~719KB）防首胜闪烁
 - `win-breathe` **2.8s `drop-shadow` 呼吸**挂在 `.win-emblem` 外层包装——`text-shadow` 对 `<img>` 无效（原 🃏 emoji 用 text-shadow，已废），故胜利发光改用 `filter: drop-shadow` 金光（随卡等比：`calc(var(--win-card-h) × 0.05 / 0.11 / 0.24)`——原 10/22/48px 是 198px 卡的 5%/11%/24%）
 - 入场 **0.55s 外层缩放回弹 + 1.1s 翻转**：外层 `win-enter-scale`（`scale 0→1`，回弹 `cubic-bezier(0.34,1.56,0.64,1)` 承载呼吸）+ `.win-card` 跑 `win-coin-spin`（`rotateY 180°→720°` 并叠加 **`rotateX ±5°` 俯仰摆动**——像被抛起的硬币晃动，`cubic-bezier(0.22,1,0.36,1)`）——始露背面、落正面，途中 360°/540° 正反交替；一个元素无法对同一 transform 挂两条缓动（`@property` iOS 13 不可用），故拆两层 DOM
 - 按钮「再来一局」沿用 `.overlay-card button` 视觉（金底黑字），入场完成后 **0.2s 淡入**（`win-btn-in`，delay 0.55s + `both` 填充）

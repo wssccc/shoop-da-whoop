@@ -25,6 +25,7 @@
 // jump in mid-flow; the watch clears it (finally) once everything has landed.
 
 import { nextTick, watch } from 'vue';
+import { Audio } from './useAudio';
 import type { SolitaireGameApi } from './useSolitaireGame';
 
 /** Flight timing — matched to .flying-card's CSS transition (0.26s). */
@@ -140,6 +141,7 @@ export function useDealing(game: SolitaireGameApi): void {
       const delay = i * STAGGER_MS;
       const fly = () => {
         if (myGen !== gen) return; // superseded — a newer deal owns the board
+        Audio.whoosh(); // papery riffle for every dealt card taking off
         el.style.transition = `transform ${FLY_MS}ms ${EASE}`;
         el.style.transform = '';
         el.style.zIndex = '9000'; // in-flight card above everything else
