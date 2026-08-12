@@ -151,31 +151,50 @@ export function isSafeNumber(state, card) {
  * location so we can skip moving a run back onto its own column.
  *   run[0] = carried head (highest rank of a number run; or the only card).
  *   src    = { zone:'tableau', col } | { zone:'freecell', idx } | null
+ *
+ * `canonical` (search-side only): empty columns / empty free cells are
+ * interchangeable (their identity is only a label), so a canonical target list
+ * keeps ONLY the lowest-index empty column / free cell — symmetric branches
+ * collapse into one. This is a SEARCH strategy, not a game rule: validators
+ * that replay recorded moves (compress.js replayCheck, format.js replay) must
+ * use the loose default so any historical coordinate stays legal.
  */
-export function validDropTargets(state, run, src) {
+export function validDropTargets(state, run, src, canonical = false) {
   const targets = [];
   if (!run || run.length === 0) return targets;
   const head = run[0];
   const len = run.length;
 
+  let firstEmptyCol = -1;
   for (let i = 0; i < state.tableau.length; i++) {
     if (src && src.zone === 'tableau' && src.col === i) continue;
     const col = state.tableau[i];
     if (col.length === 0) {
-      targets.push({ type: 'column', index: i });
-    } else {
-      const top = col[col.length - 1];
-      if (isDragon(top)) continue; // nothing stacks onto a dragon
-      if (canStack(head, top)) targets.push({ type: 'column', index: i });
+      if (canonical) {
+        if (firstEmptyCol < 0) firstEmptyCol = i;
+      } else {
+        targets.push({ type: 'column', index: i });
+      }
+      continue;
     }
+    const top = col[col.length - 1];
+    if (isDragon(top)) continue; // nothing stacks onto a dragon
+    if (canStack(head, top)) targets.push({ type: 'column', index: i });
   }
+  if (canonical && firstEmptyCol >= 0) targets.push({ type: 'column', index: firstEmptyCol });
 
   if (len === 1) {
+    let firstFree = -1;
     for (let i = 0; i < state.freeCells.length; i++) {
       if (state.freeCells[i] !== null) continue;
       if (src && src.zone === 'freecell' && src.idx === i) continue;
-      targets.push({ type: 'freecell', index: i });
+      if (canonical) {
+        if (firstFree < 0) firstFree = i;
+      } else {
+        targets.push({ type: 'freecell', index: i });
+      }
     }
+    if (canonical && firstFree >= 0) targets.push({ type: 'freecell', index: firstFree });
   }
 
   if (len === 1 && isNumber(head)) {
@@ -196,17 +215,20 @@ export function validDropTargets(state, run, src) {
 // ---------------------------------------------------------------------------
 
 export function cloneState(state) {
+  // Card objects are IMMUTABLE (every mutation in this module is an array
+  // push/pop/splice or a slot assignment — never a card field write), so
+  // clones only need to copy the ARRAYS and can share card references.
   return {
-    tableau: state.tableau.map((col) => col.map((c) => ({ ...c }))),
+    tableau: state.tableau.map((col) => col.slice()),
     freeCells: state.freeCells.map((c) => {
       if (!c) return null;
       if (c.type === 'dragonpile') {
-        return { type: 'dragonpile', locked: true, color: c.color, cards: c.cards.map((x) => ({ ...x })) };
+        return { type: 'dragonpile', locked: true, color: c.color, cards: c.cards.slice() };
       }
-      return { ...c };
+      return c;
     }),
-    foundations: Object.fromEntries(COLORS.map((c) => [c, state.foundations[c].map((x) => ({ ...x }))])),
-    flowerSlot: state.flowerSlot ? { ...state.flowerSlot } : null,
+    foundations: Object.fromEntries(COLORS.map((c) => [c, state.foundations[c].slice()])),
+    flowerSlot: state.flowerSlot,
   };
 }
 
@@ -420,7 +442,8 @@ export function genUserMoves(state) {
       const src = { zone: 'tableau', col: c, start };
       const isWhole = start === i;
       const isSingleton = run.length === 1;
-      const targets = validDropTargets(state, run, src);
+      // canonical: collapse symmetric empty-column / empty-free-cell targets
+      const targets = validDropTargets(state, run, src, true);
 
       for (const to of targets) {
         if (to.type === 'flower') continue;
@@ -462,7 +485,7 @@ export function genUserMoves(state) {
     if (isFlower(fc)) continue;
     const head = fc;
     const src = { zone: 'freecell', idx: i };
-    const targets = validDropTargets(state, [head], src);
+    const targets = validDropTargets(state, [head], src, true);
     for (const to of targets) {
       if (to.type === 'flower') continue;
       if (to.type === 'freecell') continue; // relabelling — pure churn
@@ -533,11 +556,20 @@ function cellCode(fc) {
 }
 
 export function stateKey(state) {
-  const cols = state.tableau.map((col) => col.map(cardCode).join(',')).join('|');
-  const fc = state.freeCells.map(cellCode).join(',');
-  const fd = COLORS.map((c) => c[0] + state.foundations[c].length).join(',');
-  const fl = state.flowerSlot ? 'H' : '.';
-  return cols + '#' + fc + '#' + fd + '#' + fl;
+  // Card codes are PREFIX-FREE ('.'/'H' are 1 char, everything else 2 chars),
+  // so tokens inside a column need no separator — only column boundaries do.
+  // The key is generated on every candidate move, so this hot loop stays lean.
+  let s = '';
+  for (const col of state.tableau) {
+    for (const c of col) s += cardCode(c);
+    s += '|';
+  }
+  for (const fc of state.freeCells) s += cellCode(fc);
+  s += '|';
+  for (const color of COLORS) s += color[0] + state.foundations[color].length;
+  s += '|';
+  s += state.flowerSlot ? 'H' : '.';
+  return s;
 }
 
 export function sameDest(a, b) {

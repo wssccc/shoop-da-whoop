@@ -46,9 +46,14 @@ function destLabel(state, to) {
  * moved are never moved again afterwards.
  */
 export function keyStepIndices(initial, steps, { commit }) {
-  const { cloneState, commitUserMove, runAutoMoves } = commit;
+  const { cloneState, commitUserMove } = commit;
+  // NOTE: do NOT runAutoMoves() here — the leading auto-move cascade arrives
+  // as recorded `{user:null, auto:[...]}` steps and is applied (once) in the
+  // flat loop below via applyAuto(). Pre-running the cascade AND applying the
+  // records would pop the wrong cards (the card under the auto-moved one) and
+  // desync the whole replay from replay() — crashing on the first step whose
+  // source free cell is empty in the corrupted board.
   const state = cloneState(initial);
-  runAutoMoves(state);
 
   const identity = (c) =>
     c.type === 'number' ? `n${c.color}${c.rank}` : c.type === 'dragon' ? `d${c.color}` : 'flower';
