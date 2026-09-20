@@ -14,9 +14,10 @@ Shoop Da Whoop 是一个 IE6 复古拼贴风主题站点：
   - `1a2b/` — 猜数字（1A2B · Bulls and Cows，已实现）
   - `othello/` — 黑白棋（Othello · Reversi，MCTS AI，已实现）
   - `burnrate/` — 烧钱计划（卡牌对战 AI，Vue 3 + TypeScript + Tailwind）
+  - `keyflow/` — 打字训练（课程/测试/报告，单用户 + 98.css Win98 风格，Vue 3 + TypeScript）
   - `csgame/` — 第一人称射击（CS 风格 FPS，Three.js，原生 JS，桌面 / 触屏）
 
-技术栈：Vite MPA；Solitaire / Othello / Burnrate 用 Vue 3 + TypeScript（Tailwind 按需引入），1A2B / Csgame 用原生 JavaScript（Csgame 采用 Three.js），`@vitejs/plugin-legacy` 双包兼容 iOS/Safari 13。
+技术栈：Vite MPA；Solitaire / Othello / Burnrate / Keyflow 用 Vue 3 + TypeScript（Tailwind 按需引入），1A2B / Csgame 用原生 JavaScript（Csgame 采用 Three.js），`@vitejs/plugin-legacy` 双包兼容 iOS/Safari 13。
 
 ## 开发
 
@@ -34,6 +35,7 @@ npm run dev      # 启动开发服务器（HMR）
 | 1A2B | <http://localhost:8000/games/1a2b/> |
 | Othello | <http://localhost:8000/games/othello/> |
 | 烧钱计划 | <http://localhost:8000/games/burnrate/> |
+| Keyflow | <http://localhost:8000/games/keyflow/> |
 | Whoop Strike | <http://localhost:8000/games/csgame/> |
 
 ## 构建与部署
@@ -67,6 +69,8 @@ shoop-da-whoop/
     │   ├── index.html / src/ / tsconfig*.json / eslint.config.js
     ├── burnrate/                      # 烧钱计划（Vue 3 + TS + Tailwind）
     │   ├── index.html / src/ / tsconfig*.json
+    ├── keyflow/                       # 打字训练（单用户，Vue 3 + TS + 98.css）
+    │   ├── index.html / src/ / tsconfig*.json / e2e/ / docs/
     └── csgame/                        # 第一人称射击（原生 JS + Three.js）
         ├── index.html / css/ / src/
 ```
@@ -77,4 +81,5 @@ shoop-da-whoop/
 - [games/1a2b/README.md](./games/1a2b/README.md)
 - [games/othello/README.md](./games/othello/README.md)
 - [games/burnrate/README.md](./games/burnrate/README.md)
+- [games/keyflow/README.md](./games/keyflow/README.md)
 - [games/csgame/README.md](./games/csgame/README.md)

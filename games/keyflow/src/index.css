@@ -1,0 +1,292 @@
+/* KeyFlow — Win98 外壳样式（98.css 负责主题，此处只做布局/打字区/覆盖） */
+* { box-sizing: border-box; }
+
+:root {
+  --mono: 'Consolas', 'Courier New', monospace;
+}
+
+body {
+  font-family: 'Pixelated MS Sans Serif', 'Tahoma', Arial, sans-serif;
+  font-size: 13px;
+}
+
+/* ── 桌面 + 主窗口 ── */
+.desktop {
+  background: #008080;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.keyflow-window {
+  width: min(860px, calc(100vw - 48px));
+  margin: 0 auto;
+}
+.keyflow-root { width: 100%; }
+.screen { width: 100%; }
+
+/* 窗口体内容：面板透明化，由窗口承担边框 */
+.panel { background: transparent; padding: 14px 6px 4px; width: 100%; max-width: 100%; }
+.panel.wide { max-width: 100%; }
+
+/* ── 顶部导航工具条 ── */
+.toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 5px 8px;
+  border-top: 1px solid #dfdfdf;
+  border-bottom: 1px solid #808080;
+  background: #c0c0c0;
+}
+.toolbar .btn { font-size: 12px; padding: 3px 10px; }
+
+h1.title {
+  font-size: 40px;
+  text-align: center;
+  margin: 10px 0 2px;
+  color: #000080;
+}
+.subtitle { text-align: center; font-size: 16px; margin: 4px 0 16px; }
+.copyright { text-align: center; font-size: 12px; line-height: 1.6; color: #404040; }
+.press { text-align: center; margin-top: 24px; animation: blink 1.2s infinite; }
+@keyframes blink { 50% { opacity: 0.2; } }
+.boot-box { padding: 24px 8px; }
+
+h2 {
+  font-size: 18px;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px dotted #808080;
+}
+.hint { font-size: 12px; margin: 8px 0; line-height: 1.5; }
+.error { color: #c00; font-size: 12px; min-height: 16px; margin: 6px 0; }
+
+/* ── 菜单（KeyFlowMenu）── */
+.menu { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.menu-item {
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.menu-item.selected {
+  background: #000080;
+  color: #fff;
+  border: 2px solid #000080;
+  outline: 1px dotted #fff;
+  outline-offset: -4px;
+}
+.menu-desc {
+  min-height: 32px;
+  margin: 10px 0;
+  line-height: 1.5;
+  border-top: 1px dashed #808080;
+  padding-top: 8px;
+  font-size: 12px;
+}
+
+/* ── 按钮行 / 输入 ── */
+.btn-row, .field-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.input-row { display: flex; gap: 8px; align-items: center; }
+input[type="text"], input[type="password"], input[type="number"] {
+  font-family: var(--mono);
+  font-size: 14px;
+  margin: 4px 0;
+}
+
+/* ── 打字练习（白色记事本画布）── */
+.typing-panel { max-width: 100%; }
+.line-indicator {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: #404040;
+  margin: 4px 0 0;
+  text-align: center;
+}
+.lesson-box {
+  position: relative;
+  background: #fff;
+  border: 2px solid #000;
+  padding: 20px 16px;
+  min-height: 90px;
+  margin: 10px auto;
+  width: fit-content;
+  min-width: 55%;
+  max-width: 100%;
+  overflow: hidden;
+}
+.lesson-text {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 24px;
+  letter-spacing: 2px;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+  text-align: center;
+}
+.lesson-text .done { color: #9a9a9a; }
+.lesson-text .current { background: #000080; color: #fff; outline: 1px dotted #fff; }
+.lesson-text .err { background: #c00; color: #fff; outline: 1px dotted #fff; }
+.lesson-pointer {
+  position: absolute;
+  top: -18px;
+  left: 16px;
+  color: #c00;
+  font-size: 16px;
+  transition: left 0.08s, top 0.08s;
+  pointer-events: none;
+  z-index: 2;
+}
+/* 指法提示行 */
+.finger-hint {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: #000080;
+  margin: 6px 0 2px;
+  text-align: center;
+}
+/* 首行指令框（第一个 drill 显示指令） */
+.instruction-box {
+  background: #ffffcc;
+  border: 1px solid #808000;
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* 下方实际输入行（用户实际键入内容，空格显示为 ·） */
+.typed-line {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 24px;
+  letter-spacing: 2px;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+  border-top: 1px dashed #c0c0c0;
+  padding-top: 10px;
+  margin-top: 10px;
+  min-height: 1.5em;
+  text-align: center;
+}
+.typed-line .typed { color: #000; }
+.typed-line .err { background: #c00; color: #fff; outline: 1px dotted #fff; }
+/* 输入行闪烁块光标（指示当前输入位置） */
+.blink-block {
+  position: absolute;
+  background: rgba(0, 0, 128, 0.35);
+  outline: 1px solid #000080;
+  animation: kf-blink 1s step-start infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes kf-blink {
+  50% { opacity: 0; }
+}
+
+/* 进度条（Win98 风格） */
+.progress-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.progress {
+  flex: 1;
+  height: 18px;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: repeating-linear-gradient(90deg, #000080 0 12px, #1a1ab8 12px 24px);
+  transition: width 0.08s;
+}
+.progress-label { font-size: 12px; white-space: nowrap; }
+
+.stats-row {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  font-size: 14px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.lesson-msg { min-height: 18px; text-align: center; font-size: 13px; }
+
+/* ── 总结 / 报告键值对 ── */
+.summary-body, .report-body { font-size: 14px; line-height: 1.9; margin: 8px 0; }
+.summary-body .row, .report-body .row { display: flex; justify-content: space-between; border-bottom: 1px dotted #808080; padding: 3px 0; }
+
+/* ── 滚动文本 ── */
+.scroll-text {
+  max-height: 260px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.8;
+  padding: 10px;
+  background: #fff;
+  border: 2px solid #000;
+  margin: 10px 0;
+}
+.scroll-text p { margin-bottom: 10px; }
+
+#report-chart {
+  width: 100%;
+  height: auto;
+  margin: 10px 0;
+  border: 2px solid #000;
+}
+
+/* ── 模态（98 对话框窗口）── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-window { width: min(420px, calc(100vw - 48px)); }
+.modal-body p { margin: 10px 0; }
+
+/* ── 全局通知（Toast，桌面底部状态条）── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 200;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  padding: 8px 16px;
+  font-size: 13px;
+  max-width: min(560px, calc(100vw - 48px));
+}
+
+/* ── 屏幕转场：旧屏瞬时消失 + 新屏淡入。
+   不用 out-in（会延迟新屏挂载、丢快速键盘事件）；也不重叠过渡（避免重影闪动）。── */
+.screen-enter-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.screen-enter-from { opacity: 0; transform: translateY(4px); }
+.screen-leave-active { transition: none; }
+
+/* ── Toast 转场 ── */
+.toast-enter-active, .toast-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translate(-50%, 8px); }
+
+/* ── 响应式（桌面优先，窄屏仅防溢出）── */
+@media (max-width: 640px) {
+  .desktop { padding: 12px; }
+  .keyflow-window { width: 100%; }
+  .lesson-text { font-size: 18px; }
+  .stats-row { gap: 10px; font-size: 12px; }
+}

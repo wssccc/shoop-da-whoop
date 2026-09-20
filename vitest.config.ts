@@ -15,6 +15,7 @@ export default defineConfig({
     alias: {
       '@burnrate': fileURLToPath(new URL('games/burnrate/src', import.meta.url)),
       '@solitaire': fileURLToPath(new URL('games/solitaire/src', import.meta.url)),
+      '@keyflow': fileURLToPath(new URL('games/keyflow/src', import.meta.url)),
     },
   },
   test: {
@@ -22,6 +23,7 @@ export default defineConfig({
     include: [
       'games/burnrate/src/**/*.test.ts',
       'games/solitaire/src/**/*.test.ts',
+      'games/keyflow/src/**/*.test.ts',
     ],
   },
   // Avoid clashing with the app's vite config (different root / plugins).

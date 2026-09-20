@@ -9,5 +9,28 @@
 				"DavidAnson.vscode-markdownlint"
 			]
 		}
+	},
+	// Publish the dev/preview port to the HOST (docker run -p semantics) so it is
+	// reachable from the host browser and from other devices on the LAN.
+	// Do NOT use `forwardPorts` here: that only tunnels the port to the host's
+	// localhost while VS Code is attached.
+	// NOTE: runArgs are applied when the container is created — run
+	// "Dev Containers: Rebuild Container" after changing this (a window reload
+	// is not enough). Vite already binds 0.0.0.0 (vite.config.js server/preview),
+	// which published ports require.
+	"runArgs": [
+		"-p",
+		"8000:8000"
+	],
+	// The port is published by docker above — stop VS Code from also tunnelling it,
+	// which collides with the published host port and shows a duplicate/remapped
+	// entry in the PORTS panel. Remove this block if you ever open the workspace on
+	// a remote docker host / Codespaces, where tunnelling is the only way in.
+	"portsAttributes": {
+		"8000": {
+			"label": "dev/preview server",
+			"onAutoForward": "ignore"
+		}
 	}
 }
+

@@ -153,8 +153,9 @@ function actionTargetPlayer(state: GameState, a: AiAction): PlayerId | null {
       return a.target;
     case 'assignProject':
       return a.target === 'self' ? null : a.target;
-    case 'poach':
-    case 'resign': {
+    // Only 'poach' reaches here: legal.ts deliberately excludes the
+    // resign / layoff / release actions from the AI action space.
+    case 'poach': {
       for (let pid = 0; pid < state.players.length; pid++) {
         if (state.players[pid].company.some((c) => c.id === a.targetCardId)) return pid;
       }

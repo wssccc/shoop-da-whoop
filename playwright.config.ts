@@ -16,8 +16,8 @@ export default defineConfig({
   // the e2e folders explicitly instead.
   testDir: 'games',
   testMatch: '**/e2e/**/*.spec.ts',
-  // 12 specs currently — keep the default parallelism but cap workers so
-  // the animated card interactions don't thrash a tiny dev machine.
+  // Keep the default parallelism but cap workers so the animated card
+  // interactions don't thrash a tiny dev machine.
   fullyParallel: true,
   workers: 2,
   timeout: 60_000,

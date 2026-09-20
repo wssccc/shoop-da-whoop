@@ -47,6 +47,7 @@ export default defineConfig({
       '@othello': resolve(__dirname, 'games/othello/src'),
       '@solitaire': resolve(__dirname, 'games/solitaire/src'),
       '@burnrate': resolve(__dirname, 'games/burnrate/src'),
+      '@keyflow': resolve(__dirname, 'games/keyflow/src'),
     },
   },
 
@@ -59,6 +60,10 @@ export default defineConfig({
     // `target` is intentionally omitted: @vitejs/plugin-legacy owns it and emits
     // both a modern ESM build and a transpiled `nomodule` build targeting the
     // browsers declared in .browserslistrc (iOS 13 / Safari 13 floor).
+    // `cssMinify: 'esbuild'` — Vite 8's default lightningcss chokes on the
+    // Media Queries Level 5 syntax in 98.css (`@media (not(hover))`); esbuild
+    // parses it fine.
+    cssMinify: 'esbuild',
     // Drop the noisy legal-comment banner.
     minify: 'terser',
     terserOptions: {
@@ -73,6 +78,7 @@ export default defineConfig({
         othello: resolve(__dirname, 'games/othello/index.html'),
         burnrate: resolve(__dirname, 'games/burnrate/index.html'),
         csgame: resolve(__dirname, 'games/csgame/index.html'),
+        keyflow: resolve(__dirname, 'games/keyflow/index.html'),
       },
     },
   },
