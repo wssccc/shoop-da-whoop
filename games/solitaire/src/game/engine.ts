@@ -8,7 +8,7 @@
 
 import type { EngineSoundName } from './constants';
 import * as Rules from './rules';
-import { createInitialState, restoreSnapshot, snapshot } from './state';
+import { createInitialState, MAX_SNAPSHOTS, restoreSnapshot, snapshot } from './state';
 import type {
   Card,
   CardColor,
@@ -103,6 +103,31 @@ export class SolitaireEngine {
     // count again (the previous award already incremented the counter).
     this._winAwarded = false;
     return true;
+  }
+
+  /**
+   * Rewind EVERY snapshot in one pass — the board ends up exactly where the
+   * FIRST beginUnit() of the session found it (for a fresh game: the original
+   * deal, before the post-deal settle collected anything). Backs the
+   * toolbar's 重新开始 button.
+   *
+   * Bulk rewind lives here (not as a caller-side `while (canUndo()) undo()`)
+   * because the composable layer persists on every undo() — N undo calls would
+   * re-serialize the whole ≤300-snapshot stack N times (O(n²)) and block the
+   * UI thread. The caller persists ONCE after this returns.
+   */
+  undoAll(): boolean {
+    // Drop any unit left open (a cancelled consumption or the hint path): its
+    // snapshot is inside the stack we are about to empty, and keeping the unit
+    // open would make the NEXT beginUnit('move') reuse it without snapping a
+    // fresh snapshot — that move would then be impossible to undo.
+    this.unit = null;
+    let changed = false;
+    // Bounded by MAX_SNAPSHOTS (undo() pops one per pass); the guard only
+    // exists so a future cap change can never wedge the UI thread.
+    let guard = 0;
+    while (guard++ < MAX_SNAPSHOTS + 1 && this.undo()) changed = true;
+    return changed;
   }
 
   /** First colour whose dragons are ready to collect, or null. */

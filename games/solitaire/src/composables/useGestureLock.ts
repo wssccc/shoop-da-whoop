@@ -5,7 +5,9 @@
 //     refresh / rubber-band needs the touchmove preventDefault),
 //   - pinch-zoom fires Safari's private `gesture*` events (plus multi-touch
 //     touchmove) regardless of touch-action,
-//   - double-tap zoom needs the touchend 300ms window suppressed.
+//   - double-tap zoom, whose supported switch is declarative (`touch-action:
+//     none` on every element — index.css); a JS `touchend` guard cannot stop
+//     it, see the note above the `dblclick` listener below.
 // Everything registers NON-passive so preventDefault actually applies on
 // touch — a passive listener would silently drop it.
 //
@@ -36,21 +38,22 @@ export function useGestureLock(): void {
     );
   }
 
-  // Double-tap zoom: suppress the click the second tap would otherwise
-  // synthesize within 300ms of the first. (Side effect: touch users can't
-  // double-fire a button inside 300ms — acceptable, the engine's busy lock
-  // already gates rapid actions.)
-  let lastTouchEnd = 0;
-  useEventListener(
-    document,
-    'touchend',
-    (e) => {
-      const now = Date.now();
-      if (now - lastTouchEnd <= 300) e.preventDefault();
-      lastTouchEnd = now;
-    },
-    { passive: false },
-  );
+  // Double-tap zoom is NOT suppressed here any more. The old trick —
+  // `preventDefault` on the second `touchend` within 300ms — did neither job:
+  //   * it never stopped the zoom on modern WebKit: the page zoom is a GESTURE
+  //     decision, taken independently of the synthesized click, so a button
+  //     double-tap still zoomed (every element without a `touch-action` opt-out
+  //     is fair game — only the cards, which declare `none`, stayed put),
+  //   * it DID swallow the click of every tap that followed another tap inside
+  //     300ms, so rapid re-taps / button-to-button taps were silently dropped
+  //     (the "button sometimes doesn't respond until you wait" report).
+  // The supported switch is the declarative one: `* { touch-action: none }` in
+  // index.css — `touch-action` is what WebKit documents for opting a touch
+  // region out of double-tap recognition
+  // (https://webkit.org/blog/5610/more-responsive-tapping-on-ios/). The
+  // `dblclick` guard below is belt-and-braces for engines that still arm
+  // something on the second tap; it never blocks a click.
+  useEventListener(document, 'dblclick', (e) => e.preventDefault());
 
   // Long-press / right-click context menu (save image, open link, inspect).
   useEventListener(document, 'contextmenu', (e) => e.preventDefault());

@@ -35,24 +35,43 @@ npm run preview    # 本地预览构建产物（端口 8000）
 
 ```text
 games/solitaire/
-├── index.html          # 单页入口
-├── css/style.css       # 样式
-├── js/
-│   ├── main.js         # 入口：组装模块、绑定事件、发牌动画、全屏
-│   ├── game.js         # 游戏控制器（事件驱动）
-│   ├── state.js        # 状态管理 + 快照撤销
-│   ├── rules.js        # 纯规则函数（无副作用）
-│   ├── deck.js         # 牌组与发牌
-│   ├── render.js       # DOM 渲染（全量重建）
-│   ├── anim.js         # FLIP 位移动画 + 缓动常量
-│   ├── input.js        # 拖拽交互（pointer 事件）
-│   ├── audio.js        # howler 文件音效（重构后：src/lib/audio.ts + src/composables/useAudio.ts，资源 public/sfx/*.mp3）
-│   ├── storage.js      # localStorage 持久化
-│   ├── achievements.js # 成就里程碑检测
-│   └── constants.js    # 全局常量
+├── index.html              # 单页 HTML（preload 胜利 gif）
+├── tsconfig*.json          # TypeScript 配置（base / app）
+├── src/
+│   ├── main.ts             # 入口：创建 Vue 应用
+│   ├── App.vue             # 组装 composable + 渲染棋盘 / 工具栏 / Dialog / WinCard
+│   ├── index.css           # 全部样式（CSS Variables + Flexbox + Grid + Tailwind 指令）
+│   ├── storage.ts          # localStorage 持久化封装
+│   ├── game/
+│   │   ├── engine.ts       # SolitaireEngine：状态变更唯一入口 + unit 生命周期
+│   │   ├── rules.ts        # 纯规则函数（无副作用）
+│   │   ├── state.ts        # 牌组 / 洗牌 / 发牌 / 快照 / 撤销
+│   │   ├── types.ts        # Card / DestDescriptor / MoveResult 等类型
+│   │   ├── constants.ts    # 全局常量 + 成就定义
+│   │   ├── solverAdapter.ts# GameState ↔ SolverState 适配
+│   │   ├── achievements.ts # 成就检测
+│   │   └── engine.test.ts  # vitest 引擎单测（unit 顺序模型）
+│   ├── composables/
+│   │   ├── useSolitaireGame.ts  # 控制器 + consumeUnit 执行器 + busy 锁
+│   │   ├── animateAutoMoves.ts  # FLIP 单卡飞行 + 动画常量（FLY_MS / STAGGER_MS）
+│   │   ├── useDealing.ts        # 发牌飞入动画 + settle
+│   │   ├── useDragController.ts # 拖拽交互（真牌跟随 + slotAtPoint）
+│   │   ├── useHint.ts           # 提示（worker 求解 + 缓存 + 逐步执行）
+│   │   ├── useAudio.ts          # howler 音效薄壳（iOS 挂起恢复）
+│   │   ├── useAchievements.ts   # 成就 UI 桥接（toast）
+│   │   └── useGestureLock.ts    # 全局手势锁（禁选择/缩放/滚动，旧 iOS 兜底）
+│   ├── components/
+│   │   ├── Card.vue / CardBack.vue / WinCard.vue
+│   │   └── Toaster.vue / GlyphIcon.vue / ui/（BaseBadge / BaseButton）
+│   ├── lib/                # audio.ts（howler 封装）/ toaster.ts / winGif.ts / utils.ts
+│   └── worker/solver.worker.ts  # 求解器 worker（压缩失败时 raw 兜底）
+├── e2e/                    # Playwright 端到端（board / undo / restart / touch-input …）
+├── tools/solver/           # 求解器（rules.js / solver.js / compress.js，node 脚本）
 └── docs/
-    ├── rules.md        # 游戏规则文档
-    └── design.md       # 技术设计文档
+    ├── rules.md            # 游戏规则文档
+    ├── design.md           # 技术设计文档
+    ├── glossary.md         # 术语表（与代码对齐）
+    └── solver.md           # 求解器文档
 ```
 
 ## 操作
@@ -63,6 +82,7 @@ games/solitaire/
 | 收龙 | 点击 🐉 收龙按钮 / `C`（按钮高亮时生效） |
 | 新局 | `N` |
 | 撤销 | `U` / `Z` |
+| 重新开始（回到本局开局，同一副牌） | 工具栏 ⟲ 按钮（需确认） |
 | 静音 | `M` |
 | 横屏全屏 | 移动端 ⛶ 按钮 / `F` |
 

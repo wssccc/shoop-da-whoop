@@ -181,6 +181,11 @@ test.describe('undo & busy lock', () => {
     expect(residue).toBe(0);
 
     // Now unlocked — the second card set drags and cascades normally.
+    // NB: expectSettled only proves the cards have LANDED; the executor still
+    // holds `busy` for the trailing FLY_MS+60 landing wait, so wait for the
+    // real unlock (undo greys out while busy) before dragging — otherwise this
+    // drag races the lock and is legitimately rejected.
+    await expect(undoBtn(page)).toBeEnabled({ timeout: 6_000 });
     await dragCardTo(page, 'dragon-red-1', '.slot.free-cell[data-slot="fc-1"]', { steps: 4 });
     await expectSettled(page);
     await expect(page.locator('.slot.foundation.c-black .card')).toHaveCount(6);

@@ -155,6 +155,24 @@ function confirmNewGame() {
 function cancelNewGame() {
   showNewGameConfirm.value = false;
 }
+
+/** 重新开始 confirmation: rewinding the board discards the whole undo stack —
+ *  including a finished game's final position — so it is gated behind a modal
+ *  as well. Unlike 新局 there is no `won` shortcut: askNewGame() skips its
+ *  dialog on a won board because a fresh deal loses nothing, whereas a rewind
+ *  destroys the finished position for good. */
+const showRestartConfirm = ref(false);
+
+function askRestart() {
+  showRestartConfirm.value = true;
+}
+function confirmRestart() {
+  showRestartConfirm.value = false;
+  void game.restart();
+}
+function cancelRestart() {
+  showRestartConfirm.value = false;
+}
 function onUndo() {
   void game.undo();
 }
@@ -192,6 +210,15 @@ function onCollectDragons() {
             :disabled="!game.canUndo.value || game.busy.value"
             @click="onUndo"
           >↶ 撤销</button>
+          <button
+            class="btn-restart"
+            type="button"
+            title="重新开始"
+            :disabled="!game.canUndo.value || game.busy.value"
+            @click="askRestart"
+          >
+            <GlyphIcon name="restart" :size="16" />
+          </button>
           <button
             class="btn-hint"
             type="button"
@@ -386,6 +413,35 @@ function onCollectDragons() {
             class="btn-primary"
             autofocus
             @click="confirmNewGame"
+          >确定</button>
+        </div>
+      </DialogContent>
+    </DialogPortal>
+  </DialogRoot>
+
+  <!-- 重新开始 confirmation. A separate DialogRoot rather than a `kind` switch
+       on the one above: the new-game path has no test coverage, so it stays
+       untouched, and only one of the two is ever open at a time (each open
+       path sets its own flag). Visuals are shared through index.css — the
+       restart hooks only add the glyph/class aliases. -->
+  <DialogRoot v-model:open="showRestartConfirm">
+    <DialogPortal>
+      <DialogOverlay class="overlay restart-overlay" />
+      <DialogContent class="overlay-card restart-card dialog-content">
+        <div class="overlay-glyph">⟲</div>
+        <DialogTitle class="dialog-title">重新开始本局？</DialogTitle>
+        <p>将回到本局开局状态，撤销记录会清空。</p>
+        <div class="dialog-actions">
+          <button
+            type="button"
+            class="btn-ghost"
+            @click="cancelRestart"
+          >取消</button>
+          <button
+            type="button"
+            class="btn-primary"
+            autofocus
+            @click="confirmRestart"
           >确定</button>
         </div>
       </DialogContent>

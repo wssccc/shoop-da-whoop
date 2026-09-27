@@ -16,6 +16,7 @@
 import {
     Hourglass,
     Lightbulb,
+    RotateCcw,
     Volume2,
     VolumeX,
 } from 'lucide-vue-next';
@@ -25,7 +26,8 @@ export type GlyphIconName =
   | 'hint'
   | 'hourglass'
   | 'sound'
-  | 'muted';
+  | 'muted'
+  | 'restart';
 
 const props = withDefaults(
   defineProps<{
@@ -46,6 +48,8 @@ const icon = computed(() => {
       return Volume2;
     case 'muted':
       return VolumeX;
+    case 'restart':
+      return RotateCcw;
   }
 });
 </script>

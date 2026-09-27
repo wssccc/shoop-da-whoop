@@ -333,3 +333,60 @@ describe('action units — engine operation sequence', () => {
         expect(e.stepUnit()).toBeNull();
     });
 });
+
+// The 重新开始 button rewinds the WHOLE stack in one engine call (the
+// composable persists once, so a caller-side `while (canUndo()) undo()` would
+// re-serialize the ≤300-snapshot stack on every pass — O(n²)).
+describe('bulk rewind — engine.undoAll', () => {
+    it('rewinds every unit in one pass: the board returns to the first beginUnit position and the stack empties', () => {
+        const e = engineWith({
+            tableau: [[num('black', 9, 0)], [num('red', 9, 0)]],
+            freeCells: [null, null, null],
+        });
+        const startTableau = JSON.stringify(e.state.tableau);
+
+        // Two independent units — each beginUnit pushes exactly one snapshot.
+        moveAndDrain(e, [num('black', 9, 0)], { type: 'freecell', index: 0 });
+        moveAndDrain(e, [num('red', 9, 0)], { type: 'freecell', index: 1 });
+        expect(e.state.history).toHaveLength(2);
+        expect(e.state.freeCells.filter((c) => c !== null)).toHaveLength(2);
+
+        expect(e.undoAll()).toBe(true);
+        expect(JSON.stringify(e.state.tableau)).toBe(startTableau);
+        expect(e.state.freeCells.filter((c) => c !== null)).toHaveLength(0);
+        expect(e.state.history).toHaveLength(0);
+        expect(e.canUndo()).toBe(false);
+    });
+
+    it('is a no-op on an empty stack — returns false and leaves the board untouched', () => {
+        const e = engineWith({
+            tableau: [[num('black', 9, 0)]],
+            freeCells: [null],
+        });
+        expect(e.undoAll()).toBe(false);
+        expect(e.state.tableau[0].map((c) => c.id)).toEqual(['black-9-0']);
+    });
+
+    it('closes an open unit first — otherwise the next beginUnit would reuse it and that move could never be undone', () => {
+        const e = engineWith({
+            tableau: [[num('black', 9, 0)], [num('red', 8, 0)]],
+            freeCells: [null, null],
+        });
+        moveAndDrain(e, [num('black', 9, 0)], { type: 'freecell', index: 0 });
+
+        // A unit opened but never ended (the hint path can leave one behind).
+        e.beginUnit('move');
+        expect(e.state.history).toHaveLength(2);
+
+        expect(e.undoAll()).toBe(true);
+        expect(e.state.history).toHaveLength(0);
+
+        // The next unit must snap a FRESH snapshot (history 0 → 1) and undo
+        // must actually put the card back.
+        moveAndDrain(e, [num('red', 8, 0)], { type: 'freecell', index: 1 });
+        expect(e.state.history).toHaveLength(1);
+        expect(e.undo()).toBe(true);
+        expect(e.state.freeCells[1]).toBeNull();
+        expect(e.state.tableau[1].map((c) => c.id)).toEqual(['red-8-0']);
+    });
+});

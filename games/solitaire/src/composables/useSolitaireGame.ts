@@ -436,30 +436,62 @@ export function useSolitaireGame() {
   function undo(): boolean {
     if (busy.value) return false;
     const wasUndone = engine.undo();
-    if (wasUndone) {
-      // Close any unit left open by a failed hint step (the hint path opens
-      // the unit BEFORE mirroring the solver's leading auto-moves; if the
-      // following user step fails, the unit lingers). The restored board
-      // predates that unit, so leaving it open would make the NEXT
-      // beginUnit('move') reuse it without snapping a fresh undo snapshot —
-      // that move would be impossible to undo. endUnit is a no-op when no
-      // unit is open; its checkWin is safe here (a restored board is never
-      // a winning one — wins can't be undone into).
-      engine.endUnit();
-      // The board is no longer in a winning state — drop any held-back win
-      // AND hide the WinCard emblem (it was shown for the winning board).
-      pendingWin = false;
-      won.value = false;
-      afterChange();
-      // Undo is instant (no tween): strip any mid-settle inline transform /
-      // transition the drag controller left on cards, so the restored layout
-      // renders clean instead of cards hovering at a stale park position.
-      document.querySelectorAll<HTMLElement>('#board .card').forEach((el) => {
-        el.style.transition = '';
-        el.style.transform = '';
-      });
-    }
+    if (wasUndone) finishBoardRewind();
     return wasUndone;
+  }
+
+  /**
+   * Shared tail of `undo()` / `restart()` — both are INSTANT board swaps, so
+   * they share the same bookkeeping: close any lingering unit, drop a
+   * held-back win, re-publish + persist once, then strip the inline
+   * transform/transition the drag controller leaves on cards (without it the
+   * restored layout renders with cards hovering at a stale park position).
+   */
+  function finishBoardRewind(): void {
+    // Close any unit left open by a failed hint step (the hint path opens
+    // the unit BEFORE mirroring the solver's leading auto-moves; if the
+    // following user step fails, the unit lingers). The restored board
+    // predates that unit, so leaving it open would make the NEXT
+    // beginUnit('move') reuse it without snapping a fresh undo snapshot —
+    // that move would be impossible to undo. endUnit is a no-op when no
+    // unit is open; its checkWin is safe here (a restored board is never
+    // a winning one — wins can't be undone into).
+    engine.endUnit();
+    // The board is no longer in a winning state — drop any held-back win
+    // AND hide the WinCard emblem (it was shown for the winning board).
+    pendingWin = false;
+    won.value = false;
+    afterChange();
+    document.querySelectorAll<HTMLElement>('#board .card').forEach((el) => {
+      el.style.transition = '';
+      el.style.transform = '';
+    });
+  }
+
+  /**
+   * 重新开始 — rewind the WHOLE undo stack and land on the state the player
+   * first got control of: the same deal (nothing is re-shuffled), settled by
+   * the same auto-moves a fresh newGame() runs, with no animation and no
+   * re-deal. Backs the toolbar's 重新开始 button (confirm dialog first).
+   *
+   * The rewind is a single engine call on purpose: looping `undo()` here would
+   * persist (and JSON-serialize the whole ≤300-snapshot stack) once per step —
+   * O(n²). One publish + one persist instead.
+   *
+   * No snapshot is taken afterwards: the rewind IS the player's new floor, so
+   * the undo stack stays empty and 撤销 greys out (the auto-moves that settle
+   * the deal are therefore not undoable — same convention as the boot path,
+   * which settles a restored board with the engine's raw applyAutoMoves()).
+   */
+  function restart(): boolean {
+    // Mid-flight the button is disabled; keep a guard anyway — a rewind that
+    // raced the consume loop's applied-but-unpublished steps would leave the
+    // engine one step ahead of what's on screen.
+    if (busy.value) return false;
+    const rewound = engine.undoAll();
+    engine.applyAutoMoves();
+    finishBoardRewind();
+    return rewound;
   }
 
   function newGame(): void {
@@ -541,6 +573,7 @@ export function useSolitaireGame() {
     collectDragons,
     applyAutoMoves,
     undo,
+    restart,
     newGame,
     settleAfterDeal,
     flushWinIfIdle,

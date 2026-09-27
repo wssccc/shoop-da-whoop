@@ -86,7 +86,8 @@ ACHIEVEMENTS = [...]                     // 成就定义数组
 | `fromLayout(layout)` | 从持久化数据恢复状态 |
 | `snapshot(state)` | 深拷贝当前棋局推入 `history` 栈 |
 | `restoreSnapshot(state)` | 弹出并恢复最近快照，返回 `false` 表示无可撤销 |
-| `toSaveable(state)` | 导出可序列化的棋局（不含 history） |
+| `toSaveable(state)` | 导出可序列化的棋局（**含撤销栈**，刷新后撤销仍可用） |
+| `MAX_SNAPSHOTS` | 撤销栈上限（300）——导出给引擎的批量回退用法 |
 
 **牌数据结构**（纯数据对象，无类）：
 
@@ -169,6 +170,7 @@ ACHIEVEMENTS = [...]                     // 成就定义数组
 | `collectDragons(color)` | 校验 + 开 `dragon` unit（`beginUnit`）；实际收龙步骤经 `stepUnit` 逐条消费 |
 | `applyAutoMoves()` | 无动画同步收敛（boot / restore / hint leading 镜像），最多 1000 次防死循环 |
 | `undo()` | 回退到最近快照（= 整个 unit） |
+| `undoAll()` | **一次回退整条撤销栈**（止于首个 `beginUnit` 之前的局面）+ 关掉任何遗留 unit，返回是否发生过回退。供工具栏「重新开始」使用——批量回退必须一次完成：调用侧 `undo()` 每步都持久化，循环会反复序列化整个 ≤300 层栈（O(n²)） |
 | `newGame()` | 重置状态 + 关闭任何遗留 unit（新棋盘使旧 unit 作废，防快照复用） |
 | `canUndo()` / `dragonReady()` | 查询 |
 
@@ -303,7 +305,7 @@ pointerup   → 若命中合法 → game.moveCard(run, dest)（成功则 250ms �
 | `szsol.muted` | 静音状态 | `'0'` / `'1'` |
 | `szsol.save` | 当前棋局存档 | JSON（snapshotClone 格式） |
 
-**存档策略**：**每 unit 持久化一次**（`consumeUnit` 的 `finally`，或 `afterChange` 路径）——unit 原子性：中途刷新页面回滚到 unit 之前的状态。页面刷新后自动恢复，实现断点续玩。存档仅保存棋盘状态（不含 history），撤销栈不持久化。
+**存档策略**：**每 unit 持久化一次**（`consumeUnit` 的 `finally`，或 `afterChange` 路径）——unit 原子性：中途刷新页面回滚到 unit 之前的状态。页面刷新后自动恢复，实现断点续玩。存档为完整 `toSaveable`（牌面 + **撤销栈**）：刷新后撤销同样可用（读档局面下重开 = 退到栈底）。
 
 ### 3.11 `src/game/achievements.ts` + `src/composables/useAchievements.ts` — 成就系统
 
@@ -318,7 +320,7 @@ useAchievements(wins) → 监听胜局数变化 → checkAchievements → toast(
 
 ### 3.12 `src/main.ts` + `src/App.vue` — 入口
 
-**职责**：`main.ts` 仅创建 Vue 应用挂载 `#root`；`App.vue` 组装所有 composable（`useSolitaireGame` / `useHint` / `useDealing` / `useDragController` / `useAudio` / `useAchievements` / `useGestureLock` / `useFullscreen`），绑定工具栏按钮与 reka-ui Dialog（新局确认），渲染棋盘、锁定龙堆与 WinCard。
+**职责**：`main.ts` 仅创建 Vue 应用挂载 `#root`；`App.vue` 组装所有 composable（`useSolitaireGame` / `useHint` / `useDealing` / `useDragController` / `useAudio` / `useAchievements` / `useGestureLock` / `useFullscreen`），绑定工具栏按钮与两个 reka-ui Dialog（新局确认 / **重新开始确认**），渲染棋盘、锁定龙堆与 WinCard。
 
 ### 3.13 `src/composables/useGestureLock.ts` — 全局手势锁
 
@@ -328,10 +330,10 @@ useAchievements(wins) → 监听胜局数变化 → checkAchievements → toast(
 | --- | --- | --- |
 | 滚动 / 下拉刷新 / 回弹 / 双指平移 | `document` `touchmove` `preventDefault`（`passive:false`） | iOS 16 前不支持 `overscroll-behavior`；`touch-action:none` 不拦多指 touchmove |
 | 双指捏合缩放 | `gesturestart/change/end` `preventDefault`（Safari 私有事件） | iOS 10+ 忽略 `user-scalable=no`；pinch 走 Safari 私有 gesture 事件，不受 `touch-action` 影响 |
-| 双击缩放 | `touchend` 300ms 内第二次 `preventDefault` | 抑制第二次 tap 合成的 click（副作用：触摸 300ms 内连点按钮只触发一次，busy 锁已兜底） |
+| 双击缩放 | CSS `* { touch-action: none }`（`index.css` 声明式层）+ `dblclick` `preventDefault`（兜底） | `touch-action` **不继承**、逐元素判定 → `body` 上的 `none` 管不到按钮（按钮 `auto` 时 iOS 上双击按钮仍缩放，牌因显式 `none` 从不缩放）。旧方案「`touchend` 300ms 内第二次 `preventDefault`」既拦不住现代 WebKit 的缩放（缩放在手势层判定，不是合成 click 的副作用），又会吞掉 300ms 内下一次 tap 的 click，已删除 |
 | 长按 / 右键菜单 | `contextmenu` `preventDefault` | 禁用"保存图片 / 打开链接 / 检查" |
 
-**安全性**：拖拽走 Pointer Events（`pointermove` 不受 `touchmove` preventDefault 影响）；棋盘无可滚动区域，全局 touchmove 拦截无损失。配合 `index.css` 的 `html,body { position:fixed; overflow:hidden; overscroll-behavior:none; touch-action:none }`（声明式层），`useGestureLock` 是旧 iOS 的运行时第二道闸。
+**安全性**：拖拽走 Pointer Events（`pointermove` 不受 `touchmove` preventDefault 影响）；棋盘无可滚动区域，全局 touchmove 拦截无损失。声明式层见 `index.css`：`html,body { position:fixed; overflow:hidden; overscroll-behavior:none; touch-action:none }` + **`* { touch-action: none }`**（每个元素逐条退出浏览器手势，按钮/面板/浮层/Dialog 在内，顺带消掉 WebKit 的 350ms tap 延迟），`useGestureLock` 是旧 iOS 的运行时第二道闸。
 
 ---
 
@@ -457,6 +459,14 @@ all foundations[color].length == 9  // 所有终局槽满
 - 撤销时 `restoreSnapshot(state)` 弹出栈顶并覆盖当前状态；成功时引擎同时闭合任何遗留的打开 unit（防下一次 `beginUnit` 复用旧快照）
 - history 栈上限 300，超出时 shift 最旧记录
 
+#### 重新开始（工具栏 ⟲ 按钮）
+
+- **语义 = 一次把撤销栈走到底**：`useSolitaireGame.restart()` → `engine.undoAll()`（一次回退整栈）→ `engine.applyAutoMoves()`（补上发牌后自动归位）→ 一次 `afterChange()`。落到的是**本局第一次可操作的那一帧**（同一副牌，**不重新洗牌**）
+- **无动画**：与撤销一致是瞬时换板（不发牌动画、无 tween），完成后清牌上的内联 `transform`/`transition`
+- **撤销栈清空**：回退即新的地板 → `canUndo` 变 false，撤销 / 重新开始按钮双双变灰；重置发生在 `finishBoardRewind()`（undo / restart 共用的收尾：`endUnit` + 清 `won`/`pendingWin` + `publish` + `persist` + 清内联样式）
+- 按钮 `disabled = !canUndo || busy`（与撤销同条件）；点击先弹确认框（`App.vue` 的第二个 `DialogRoot`，class `.restart-overlay` / `.restart-card`），**胜利态同样弹**（与 新局 在 `won` 时直接重开不同：回退会永久丢掉终局画面）
+- **已知边界**：读档局面下栈底可能不是原始发牌（boot 的 `applyAutoMoves()` 不拍快照）；栈达 300 上限后最早快照被 shift 丢弃，此时回退到的是“还能回退到的最早一帧”
+
 ---
 
 ## 6. 渲染与交互
@@ -505,7 +515,7 @@ all foundations[color].length == 9  // 所有终局槽满
 | `9000` | 飞行中的牌（级联 / 收龙 / 发牌 / 拖拽 `.is-dragging`）——`IN_FLIGHT_Z` 单一值，落地立即清空 | 动态 | `animateAutoMoves.ts` / `useDealing.ts` / `index.css` |
 | `10000` | `.overlay` 全屏遮罩（新局确认） | 静态 | `index.css` |
 | `10050` | `.win-stage` 胜利翻转卡展示（tableau 区域锚定，`pointer-events:none` + 按钮 auto） | 静态 | `index.css` |
-| `10100` | `.overlay.newgame-overlay` 新局确认（防御：须在确认弹窗之上） | 静态 | `index.css` |
+| `10100` | `.overlay.newgame-overlay` / `.overlay.restart-overlay` 确认弹窗遮罩（新局 / 重新开始；防御：须在确认弹窗之上） | 静态 | `index.css` |
 | `10110` | `.dialog-content` 确认弹窗内容（reka-ui portal 兄弟节点） | 静态 | `index.css` |
 | `10200` | `.toasts` 成就提示（`pointer-events: none`） | 静态 | `index.css` |
 
@@ -514,7 +524,7 @@ all foundations[color].length == 9  // 所有终局槽满
 1. **只在飞行瞬间抬升、落地清除**：z-index 在 `flip()` 内设置（`IN_FLIGHT_Z`），落地用 `setTimeout` 清回 `''`（auto）。等待起飞的牌保持自然层叠，否则会干扰列内叠放（曾出现"等待牌一次性抬升 → 列内层级反转"的 bug）。
 2. **级联单飞单落**：`consumeUnit` 一次只让一张牌在空中（320ms 飞行 / 200ms 交错 = 相邻两张短暂重叠），`IN_FLIGHT_Z` 统一高于所有静止牌，后起飞的天然盖住先起飞的（追尾效果合理）。
 3. **浮层带永远最高**：胜利 WinCard 的显示时机保证所有牌已落地（`flushWinIfIdle` 在 `busy` 释放后），但 z 仍取浮层带值（10050），防御任何残留飞行牌/后发动画盖住它。
-4. **弹窗互不叠加**：胜利展示不再有全屏 overlay，`askNewGame()` 在 `won` 时直接 `newGame()`（跳过确认弹窗）的行为层兜底保留，杜绝确认弹窗与胜利 UI 同时出现。
+4. **弹窗互不叠加**：胜利展示不再有全屏 overlay，`askNewGame()` 在 `won` 时直接 `newGame()`（跳过确认弹窗）的行为层兜底保留，杜绝确认弹窗与胜利 UI 同时出现。**唯一例外**：「重新开始」的确认框在胜利态下照弹——它不叠在另一个 `.overlay` 上（`.win-stage` 是 `pointer-events:none` 的 tableau 内浮层，非遮罩），而回退会永久丢掉终局画面，必须留一道确认。
 
 #### 胜利展示的时机（飞牌动画完成后显示）
 
@@ -523,7 +533,7 @@ all foundations[color].length == 9  // 所有终局槽满
 - **普通移动触发胜利**（最后一张牌手动放上终局）：无飞行单位在跑 → 移动路径直接调用 `flushWinIfIdle()`，`won` 立即置位，WinCard 马上出现
 - **收牌动画途中触发胜利**（最后一张数字牌自动收向终局即是胜利）：`busy === true` → 只置 `pendingWin` 不置 `won`；`consumeUnit` 的 `finally` 中所有牌落地后才调用 `flushWinIfIdle()` 释放 `won`——保证翻转卡 不会在飞行中的牌上方弹出
 
-相关状态：`pendingWin`（`useSolitaireGame.ts` 模块级私有标志）。`newGame()` 清 `won`/`pendingWin`；`undo()` 成功时也清 `won`（棋盘撤回非胜利态 → WinCard 卸载）。胜利音效不延迟（`onSound('win')` 随引擎立即播放）。WinCard 存活期间棋盘**无遮罩、可交互**（终局槽牌不可拖，可点撤销或 toolbar 新局直接重开）。
+相关状态：`pendingWin`（`useSolitaireGame.ts` 模块级私有标志）。`newGame()` 清 `won`/`pendingWin`；`undo()` / `restart()` 成功时也清 `won`（棋盘已不是胜利态 → WinCard 卸载；重开不回退胜局计数）。胜利音效不延迟（`onSound('win')` 随引擎立即播放）。WinCard 存活期间棋盘**无遮罩、可交互**（终局槽牌不可拖，可点撤销、toolbar 新局或重新开始）。
 
 #### 自动收牌动画的节奏（所有场景统一）
 
@@ -597,7 +607,7 @@ solitaire/
 │   │   ├── useDealing.ts         # 发牌飞入动画 + settle
 │   │   ├── useDragController.ts  # 拖拽交互（真牌跟随 + slotAtPoint）
 │   │   ├── useHint.ts            # 提示（worker 求解 + 缓存 + 逐步执行）
-│   │   ├── useAudio.ts           # Web Audio 合成音效
+│   │   ├── useAudio.ts           # howler 音效薄壳（iOS 挂起恢复，见 §3.9）
 │   │   ├── useAchievements.ts    # 成就 UI 桥接（toast）
 │   │   └── useGestureLock.ts     # 全局手势锁（禁选择/缩放/滚动，旧 iOS 兜底）
 │   ├── components/
@@ -632,11 +642,13 @@ solitaire/
 - dragon unit：空闲格龙先收、列顶龙后收、随后级联
 - **全空闲格被同色龙占满时收列顶龙**（幽灵索引 `freeCells[-1]` 回归）
 - 龙未全暴露时收龙被拒
+- `undoAll()`：一次回退整个栈（结束于首个 `beginUnit` 前的局面、栈清空、`canUndo()` false）；空栈返回 false；先关掉遗留 unit（否则下一次 `beginUnit` 会复用旧快照，那一手将永远不可撤销）
 
 ### 集成测试
 
 - 完整游戏流程：发牌 → 移动 → 收龙 → 胜利（Playwright 冒烟脚本见 `temp/`）
 - 撤销多步后状态一致性
+- 重新开始（`e2e/restart.spec.ts`）：取消无副作用；确定后落到开局帧（含自动归位）、栈清空并落盘；真发牌 + 走一步后重开还原同一副牌；胜利态照弹确认且胜局计数保留
 - 存档/读档往返一致性
 
 ---

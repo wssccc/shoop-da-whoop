@@ -90,10 +90,17 @@ export function toSaveable(state: GameState): Snapshot & { history: Snapshot[] }
   return { ...snap, history: state.history.map((h) => snapshotClone(h)) };
 }
 
+/**
+ * Hard cap on the undo stack (deep board clones) — the oldest snapshot is
+ * dropped past this. Exported because the engine's bulk rewind has to be
+ * bounded by the same number.
+ */
+export const MAX_SNAPSHOTS = 300;
+
 /** Push a restore point onto the undo stack. */
 export function snapshot(state: GameState): void {
   state.history.push(snapshotClone(state));
-  if (state.history.length > 300) state.history.shift();
+  if (state.history.length > MAX_SNAPSHOTS) state.history.shift();
 }
 
 /** Pop and apply the last restore point. Returns false if none. */

@@ -196,6 +196,24 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* touch-action does NOT inherit: every element is judged by its OWN computed
+ * value (intersected with its ancestors' up to the element that implements the
+ * gesture — MDN), so the `body` rule above left every button, panel, overlay
+ * and dialog at the initial `auto`. On iOS 10+ (which ignores both
+ * `user-scalable=no` AND `maximum-scale`) a double-tap on a button therefore
+ * still zoomed the whole page — while the cards, which declare `none`
+ * explicitly, never zoomed. The old JS workaround (`preventDefault` on the
+ * second `touchend` inside 300ms) does NOT stop that zoom on modern WebKit
+ * either: the zoom is a gesture decision, not a consequence of the synthesized
+ * click — it only swallowed the click. Opt EVERY element out declaratively
+ * instead; the board is a fixed, non-scrolling layout, so no element has a
+ * legitimate pan / pinch / double-tap gesture. (This also removes WebKit's
+ * 350ms tap delay — see https://webkit.org/blog/5610/more-responsive-tapping-on-ios/.)
+ */
+* {
+  touch-action: none;
+}
+
 /* ============================================================
  * Components — Solitaire board + chrome.
  * (Utility skeleton: App.vue template. Behavioural + complex rules: here.)
@@ -306,7 +324,8 @@ body {
     margin-left: 4px;
   }
   .btn-hint,
-  .btn-mute {
+  .btn-mute,
+  .btn-restart {
     min-width: 42px;
     display: inline-flex;
     align-items: center;
@@ -1222,8 +1241,10 @@ body {
     filter: brightness(1.1);
   }
 
-  /* New-game confirmation dialog: two buttons side by side. */
-  .newgame-card {
+  /* Confirmation dialogs (新局 / 重新开始): two buttons side by side. Both
+     dialogs share the card metrics below via their hook class. */
+  .newgame-card,
+  .restart-card {
     padding: 30px 38px;
   }
   /* reka-ui DialogContent sits as a fixed sibling of the overlay (portal
@@ -1246,13 +1267,16 @@ body {
      UNDER the win overlay and its buttons would be unclickable. (askNewGame()
      already skips the confirm when a win is showing; this guards any future
      path.) */
-  .overlay.newgame-overlay {
+  .overlay.newgame-overlay,
+  .overlay.restart-overlay {
     z-index: 10100;
   }
-  .newgame-card .overlay-glyph {
+  .newgame-card .overlay-glyph,
+  .restart-card .overlay-glyph {
     font-size: 44px;
   }
-  .newgame-card h2 {
+  .newgame-card h2,
+  .restart-card h2 {
     margin-top: 6px;
     font-size: 20px;
   }
