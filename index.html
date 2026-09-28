@@ -4,8 +4,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f5f0e8" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Shoop Da Whoop" />
   <title>Shoop Da Whoop</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
   <link href="style.css" rel="stylesheet" type="text/css" />
 </head>
 
@@ -84,9 +90,18 @@
         Head of Common Mockery: "No. My real purpose here is to FIRE MY LASERS, GAGHH!!!" <em>*Shoop Da Whoop*</em>
       </div>
     </div>
+
+    <div class="row">
+      <!-- PWA install entry. Hidden by default: shared/pwa/install.ts reveals
+           it only when installing is actually possible (iOS, or Chromium
+           with beforeinstallprompt available). -->
+      <button id="pwa-install-btn" class="pwa-install-btn" type="button" hidden>
+        安装到主屏幕
+      </button>
+    </div>
   </div>
 
-  <!-- Home JS entry (skeleton, currently no-op). -->
+  <!-- Home JS entry: PWA wiring (service worker + install entry). -->
   <script type="module" src="./main.js"></script>
 </body>
 

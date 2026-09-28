@@ -382,5 +382,8 @@ const chooseSide = (side: 1 | 2) => {
         >确认重开</BaseButton>
       </div>
     </BaseDialog>
+
+    <!-- Back to the site lobby (see shared/styles/game-home-link.css). -->
+    <a class="game-home-link" href="/" title="返回游戏大厅" aria-label="返回游戏大厅">⌂</a>
   </div>
 </template>

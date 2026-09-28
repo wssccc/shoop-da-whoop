@@ -33,6 +33,8 @@ import {
 import { setupTouchControls } from './touch.js';
 import { buildWeapon } from './weapon.js';
 import { buildLights, buildSpawnPoints, buildWorld } from './world.js';
+// PWA: register the service worker + update banner (shared by every entry).
+import '../../../shared/pwa/pwa';
 
 function init() {
   S.scene = new THREE.Scene();

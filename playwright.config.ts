@@ -12,8 +12,9 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  // testDir globs do not expand `*` reliably — point at `games` and match
-  // the e2e folders explicitly instead.
+  // `testDir` only accepts a single string, so the two spec roots get one
+  // project each: per-game specs under `games/**/e2e/` and the top-level
+  // PWA/offline specs under `e2e/`.
   testDir: 'games',
   testMatch: '**/e2e/**/*.spec.ts',
   // Keep the default parallelism but cap workers so the animated card
@@ -30,7 +31,19 @@ export default defineConfig({
     // help diagnose a failing animated interaction locally.
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
+  projects: [
+    {
+      name: 'games',
+      testDir: 'games',
+      testMatch: '**/e2e/**/*.spec.ts',
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'pwa',
+      testDir: 'e2e',
+      use: { browserName: 'chromium' },
+    },
+  ],
   webServer: {
     command: 'npm run build && npm run preview',
     url: 'http://localhost:8000/games/solitaire/',

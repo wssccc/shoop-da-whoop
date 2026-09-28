@@ -1,0 +1,37 @@
+/* "Back to the site lobby" link shared by the four Vue game apps.
+ *
+ * Every game is a separate page under /games/<name>/ and the lobby lives at
+ * the site root, so this is a plain link. It is pinned to the bottom-right
+ * corner because in standalone/PWA mode (no browser chrome, and no system
+ * back affordance on iOS) it is the only way back to the lobby besides
+ * killing the app.
+ *
+ * Runtime notes: keep it iOS 13-safe (no `inset`, no flex `gap`) and never
+ * put `:focus-visible` in the same selector list as `:hover`/`:active` —
+ * unsupporting engines drop the WHOLE rule.
+ */
+.game-home-link {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  /* Fallback first: engines without env() keep the plain 10px. */
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font: 18px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-decoration: none;
+  opacity: 0.75;
+}
+
+.game-home-link:hover,
+.game-home-link:active {
+  opacity: 1;
+}

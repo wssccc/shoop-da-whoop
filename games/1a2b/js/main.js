@@ -9,6 +9,8 @@ import { Audio } from './audio.js';
 import { Game } from './game.js';
 import { Render } from './render.js';
 import { Storage } from './storage.js';
+// PWA: register the service worker + update banner (shared by every entry).
+import '../../../shared/pwa/pwa';
 
 const $ = sel => document.querySelector(sel);
 

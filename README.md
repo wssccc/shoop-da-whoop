@@ -45,19 +45,31 @@ npm run build    # 产出 dist/（modern ESM + legacy nomodule 双包）
 npm run preview  # 本地预览构建产物
 ```
 
-构建产物在 `dist/`，使用相对资源路径（`base: './'`），可托管于任意静态服务器或子路径。
+构建产物在 `dist/`（根绝对路径资源，`base: '/'`），并附带 PWA 产物：`manifest.webmanifest`、`sw.js`（Workbox 预缓存全站，含 legacy 双包）与 `pwa/` 图标。
 
-站点部署至 **<https://shoopdawhoop.wssccc.com>**：将 `dist/` 内容上传至服务器对应目录即可。
+站点部署至 **<https://shoopdawhoop.wssccc.com>**（域名根；因此 service worker scope 为 `/`）：将 `dist/` 内容上传至服务器对应目录即可。
+
+## PWA（离线游玩）
+
+站点是一个完整 PWA：全部游戏资源在首次访问时被 Service Worker 预缓存，之后可离线游玩；iOS / Android 可安装到主屏幕。
+
+- **注册与更新**：每个入口引入 `shared/pwa/pwa.ts`（`registerType: 'prompt'`）。检测到新版本时页面底部出现非阻塞横幅，玩家点「更新」才激活新 SW 并刷新——对局不会被打断。
+- **安装引导**：首页的「安装到主屏幕」按钮（`shared/pwa/install.ts`）在 iOS 显示分步指引，在 Chromium 走原生安装弹窗；按钮仅在可安装时可见。
+- **service worker**：由 `vite-plugin-pwa` 生成（generateSW），预缓存范围 = 全站（7 个 HTML 入口 + modern/legacy 双包 + `public/`）。MPA 下刻意 **不设** `navigateFallback`，目录导航（如 `/games/solitaire/`）由 `directoryIndex` 落到各自 `index.html`。
+- **验证**：`npx playwright test --project=pwa`（构建产物 + 离线断言）；iOS 真机需手动验收（添加到主屏幕 → 飞行模式启动）。
+- **注意**：SW 只在构建产物里生效（dev 下关闭）；改图标后 iOS 会缓存主屏图标，需删除重加。
 
 ## 目录结构
 
 ```text
 shoop-da-whoop/
 ├── index.html / main.js / style.css   # 首页（Raw Meme Collage）
-├── vite.config.js / package.json      # 站点级配置
+├── vite.config.js / package.json      # 站点级配置（含 VitePWA）
 ├── .browserslistrc                    # 浏览器兼容性目标
-├── public/images/                     # 首页静态资源
+├── e2e/pwa.spec.ts                    # PWA 离线 e2e（顶层级）
+├── public/images/ sfx/ pwa/           # 静态图片 / 音效 / PWA 图标
 ├── shared/                            # 共享样式与工具
+│   ├── pwa/                           # SW 注册 + 更新横幅 + 安装引导
 │   ├── styles/reset.css               # 全局样式重置
 │   └── utils/common.js                # 通用纯函数工具
 └── games/                             # 附属游戏

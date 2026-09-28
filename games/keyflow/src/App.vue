@@ -134,5 +134,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
     <Transition name="toast">
       <div v-if="api.notice.value" class="toast" role="status" aria-live="polite">{{ api.notice.value }}</div>
     </Transition>
+
+    <!-- Back to the site lobby (see shared/styles/game-home-link.css). -->
+    <a class="game-home-link" href="/" title="返回游戏大厅" aria-label="返回游戏大厅">⌂</a>
   </div>
 </template>

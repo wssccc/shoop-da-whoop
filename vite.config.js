@@ -17,13 +17,16 @@ import vue from '@vitejs/plugin-vue';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
-  // Relative asset URLs so dist/ can be hosted from any sub-path
-  // (file://, GitHub Pages sub-folder, CDN, etc.).
-  base: './',
+  // Root-absolute asset URLs. The site is deployed at the domain root
+  // (GitHub Pages + CNAME) and a root base is REQUIRED for the service
+  // worker setup: with a relative base, the PWA registration URL would
+  // resolve under /games/<name>/ and 404.
+  base: '/',
 
   plugins: [
     legacy({
@@ -37,6 +40,52 @@ export default defineConfig({
     // the plain-JS entries (home / solitaire / 1a2b): the plugin only
     // processes .vue files, so it won't touch their vanilla JS.
     vue(),
+    // PWA: web app manifest + Workbox service worker (generateSW strategy).
+    // The site is 100% static, so "offline" simply means "precache all of
+    // dist/": the 7 html entries, both the modern and the legacy bundles,
+    // images and sfx. Updates use the prompt flow (shared/pwa/pwa.ts shows a
+    // banner; nothing reloads until the player taps Update).
+    VitePWA({
+      registerType: 'prompt',
+      manifest: {
+        name: 'Shoop Da Whoop',
+        short_name: 'ShoopDaWhoop',
+        description: 'A tiny arcade of browser games.',
+        theme_color: '#f5f0e8',
+        background_color: '#f5f0e8',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/pwa/icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: '/pwa/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      workbox: {
+        // Precache everything the site can serve (7 html entries + modern &
+        // legacy bundles + public/ assets). Legacy doubles (1.4 MB before
+        // gzip) are kept ON PURPOSE: iOS 13 has no other way to be offline.
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,gif,webp,mp3,wav,ogg,woff,woff2,ico}'],
+        // Directory-style navigations (/games/solitaire/) resolve to the
+        // precached index.html of that directory. NOTE: no navigateFallback
+        // here — a global fallback would funnel every offline game URL to
+        // the home page.
+        directoryIndex: 'index.html',
+        // Per-file cap stays at the 2 MB default: the largest dist file is
+        // ~537 KB (csgame legacy bundle).
+      },
+      devOptions: {
+        // Service worker is disabled in dev (it fights HMR). Verify offline
+        // behavior through `npm run build && npm run preview`.
+        enabled: false,
+      },
+    }),
   ],
 
   // `@othello` mirrors the Othello tsconfig `paths` (`@othello/* -> ./src/*`)

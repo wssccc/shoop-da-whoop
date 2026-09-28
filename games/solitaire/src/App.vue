@@ -450,4 +450,7 @@ function onCollectDragons() {
 
   <!-- Toasts (reka-ui Toast, imperative store — see lib/toaster.ts). -->
   <Toaster />
+
+  <!-- Back to the site lobby (see shared/styles/game-home-link.css). -->
+  <a class="game-home-link" href="/" title="返回游戏大厅" aria-label="返回游戏大厅">⌂</a>
 </template>

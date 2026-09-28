@@ -1,20 +1,13 @@
-// main.js -- Shoop Da Whoop 首页 JS 入口。
+// main.js -- Shoop Da Whoop home page JS entry.
 //
-// 当前首页为纯静态原始拼贴页（Raw Meme Collage），暂无交互逻辑，此文件仅作骨架预留。
-// 需要时在此实现：游戏卡片搜索 / 分类筛选 / 入场动画 等，
-// 并由 index.html 以 <script type="module" src="./main.js"> 引入。
+// The home page is a static meme collage, so there is no game logic here.
+// It wires the shared PWA modules: service-worker registration + update
+// banner (shared/pwa/pwa), and the "add to home screen" entry
+// (shared/pwa/install). Future home features (search / filters / intro
+// animations) belong in this file too.
 
-// import { throttle } from './shared/utils/common.js';
+import { initInstallEntry } from './shared/pwa/install';
+import './shared/pwa/pwa';
 
-// function initHome() {
-//   // TODO: 搜索 / 分类 / 动画
-// }
-//
-// if (document.readyState === 'loading') {
-//   document.addEventListener('DOMContentLoaded', initHome);
-// } else {
-//   initHome();
-// }
-
-export { };
+initInstallEntry();
 
